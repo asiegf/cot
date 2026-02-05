@@ -1,0 +1,70 @@
+openapi: 3.1.0
+info:
+  title: Minimal API
+  version: 1.0.0
+  description: A minimal example API for testing spec generation.
+  contact:
+    name: API Support
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: status
+    description: Status operations
+  - name: items
+    description: Item operations
+paths:
+  /status:
+    get:
+      summary: Get status
+      description: Returns the current status of the API.
+      operationId: getStatus
+      tags:
+        - status
+      responses:
+        '204':
+          description: API is healthy
+  /items:
+    get:
+      summary: Get items
+      description: Returns a list of all items.
+      operationId: getItems
+      tags:
+        - items
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+  /items/{id}:
+    get:
+      summary: Get a single item
+      description: Returns a single item by its ID.
+      operationId: getItemById
+      tags:
+        - items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
