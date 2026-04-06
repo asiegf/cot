@@ -175,7 +175,8 @@
                                   ~path-str ~params-sym)
                ~request-sym (let [query-params# (into {} (keep (fn [[k# v#]]
                                                                 (when-not (contains? ~path-params k#)
-                                                                  [(name k#) v#]))
+                                                                  [(keyword (name k#))
+                                                                   v#]))
                                                               ~params-sym))
                                    qs# (str/join "&" (map (fn [[k# v#]] (str k# "=" v#)) query-params#))]
                               (reduce (fn [r# [k# v#]]
