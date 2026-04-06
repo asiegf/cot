@@ -141,13 +141,22 @@
      (get-in operation
              [:responses :200 :content :application/json :schema :type])))
 
+(defn- path-param-names
+  "Extract path parameter names from a path template string as a set of keywords.
+   Input: \"/items/{id}\"
+   Output: #{:id}"
+  [path-str]
+  (->> (re-seq #"\{(\w+)\}" path-str)
+       (map (comp keyword second))
+       set))
+
 (defn generate-test-form
   "Generate a deftest form for a single operation."
   [spec handler-sym inputs-sym method path operation]
-  (let [path-str (keyword->path-str path)
-        query-params (:query (extract-params-by-location operation) [])
-        json? (json-response? operation)
-        spec-kw (when json? (response-spec-keyword spec operation))
+  (let [path-str   (keyword->path-str path)
+        path-params (path-param-names path-str)
+        json?      (json-response? operation)
+        spec-kw    (when json? (response-spec-keyword spec operation))
         input-sym   (gensym "input")
         params-sym  (gensym "params")
         headers-sym (gensym "headers")
@@ -164,18 +173,16 @@
                ~headers-sym (:headers ~input-sym {})
                ~request-path-sym (path-template->request-path
                                   ~path-str ~params-sym)
-               ~request-sym (reduce (fn [r# [k# v#]]
-                                      (mock/header r# (name k#) v#))
-                                    (cond-> (mock/request ~method ~request-path-sym)
-                                      ~(boolean (seq query-params))
-                                      (mock/query-string
-                                       (str/join
-                                        "&"
-                                        (keep (fn [k#]
-                                                (when-let [v# (get ~params-sym k#)]
+               ~request-sym (let [qs# (str/join "&"
+                                        (keep (fn [[k# v#]]
+                                                (when-not (contains? ~path-params k#)
                                                   (str (name k#) "=" v#)))
-                                              ~query-params))))
-                                    ~headers-sym)
+                                              ~params-sym))]
+                              (reduce (fn [r# [k# v#]]
+                                        (mock/header r# (name k#) v#))
+                                      (cond-> (mock/request ~method ~request-path-sym)
+                                        (seq qs#) (mock/query-string qs#))
+                                      ~headers-sym))
                ~response-sym (~handler-sym ~request-sym)
                ~@(when json?
                    [body-sym `(json/read-str (:body ~response-sym)
@@ -203,7 +210,9 @@
    inputs-sym: Symbol referring to a map of [method path] -> input
               Only endpoints with keys in this map will have tests generated.
               Each input value is a map with two optional keys:
-                :params  — map of path and query parameter values
+                :params  — map of parameter values; path params are substituted
+                           into the URL, all remaining params are forwarded as
+                           query string
                 :headers — map of header values to send with the request
    spec-path: Path to the OpenAPI YAML file
 
