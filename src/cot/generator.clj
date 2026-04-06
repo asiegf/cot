@@ -145,45 +145,37 @@
   "Generate a deftest form for a single operation."
   [spec handler-sym inputs-sym method path operation]
   (let [path-str (keyword->path-str path)
-        params-by-loc (extract-params-by-location operation)
-        query-params (:query params-by-loc [])
-        header-params (:header params-by-loc [])
+        query-params (:query (extract-params-by-location operation) [])
         json? (json-response? operation)
         spec-kw (when json? (response-spec-keyword spec operation))
-        input-sym (gensym "input")
-        params-sym (gensym "params")
+        input-sym   (gensym "input")
+        params-sym  (gensym "params")
         headers-sym (gensym "headers")
         request-path-sym (gensym "request-path")
-        request-sym (gensym "request")
+        request-sym  (gensym "request")
         response-sym (gensym "response")
-        body-sym (gensym "body")
-        base-request `(cond-> (mock/request ~method ~request-path-sym)
-                         ~(boolean (seq query-params))
-                         (mock/query-string
-                          (str/join
-                           "&"
-                           (keep (fn [k#]
-                                   (when-let [v# (get ~params-sym k#)]
-                                     (str (name k#) "=" v#)))
-                                 ~query-params))))
-        request-expr (if (seq header-params)
-                       `(reduce (fn [r# k#]
-                                  (if-let [v# (get ~headers-sym k#)]
-                                    (mock/header r# (name k#) v#)
-                                    r#))
-                                ~base-request
-                                ~header-params)
-                       base-request)]
+        body-sym     (gensym "body")]
     `(t/deftest ~(operation->test-name method path)
        (t/testing ~(format "%s %s returns valid response"
                            (str/upper-case (name method))
                            path-str)
-         (let [~input-sym (get ~inputs-sym [~method ~path-str] {})
-               ~params-sym (:params ~input-sym {})
+         (let [~input-sym   (get ~inputs-sym [~method ~path-str] {})
+               ~params-sym  (:params ~input-sym {})
                ~headers-sym (:headers ~input-sym {})
                ~request-path-sym (path-template->request-path
                                   ~path-str ~params-sym)
-               ~request-sym ~request-expr
+               ~request-sym (reduce (fn [r# [k# v#]]
+                                      (mock/header r# (name k#) v#))
+                                    (cond-> (mock/request ~method ~request-path-sym)
+                                      ~(boolean (seq query-params))
+                                      (mock/query-string
+                                       (str/join
+                                        "&"
+                                        (keep (fn [k#]
+                                                (when-let [v# (get ~params-sym k#)]
+                                                  (str (name k#) "=" v#)))
+                                              ~query-params))))
+                                    ~headers-sym)
                ~response-sym (~handler-sym ~request-sym)
                ~@(when json?
                    [body-sym `(json/read-str (:body ~response-sym)
@@ -212,7 +204,7 @@
               Only endpoints with keys in this map will have tests generated.
               Each input value is a map with two optional keys:
                 :params  — map of path and query parameter values
-                :headers — map of header parameter values
+                :headers — map of header values to send with the request
    spec-path: Path to the OpenAPI YAML file
 
    Also generates a `reload-tests!` function that can be called from the REPL
