@@ -27,3 +27,12 @@
     (is (form-contains? form 'clojure.data.json/read-str))
     (is (form-contains? form 'clojure.spec.alpha/valid?))
     (is (not (form-contains? form 'clojure.core/every?)))))
+
+(deftest generate-test-form-header-params-test
+  (let [operation {:parameters [{:in "header" :name "Authorization"}
+                                {:in "header" :name "X-Request-Id"}]
+                   :responses {:200 {:content {:application/json
+                                               {:schema {:$ref "#/components/schemas/Status"}}}}}}
+        form (gen/generate-test-form {} 'handler 'inputs :get "/secure" operation)]
+    (is (form-contains? form 'ring.mock.request/header))
+    (is (form-contains? form 'clojure.core/reduce))))

@@ -39,6 +39,26 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Item'
+  /secure:
+    get:
+      summary: Get secure resource
+      description: Returns a resource that requires an Authorization header.
+      operationId: getSecure
+      tags:
+        - status
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
   /items/{id}:
     get:
       summary: Get a single item
@@ -67,4 +87,11 @@ components:
         id:
           type: integer
         name:
+          type: string
+    Status:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
           type: string

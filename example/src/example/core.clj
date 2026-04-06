@@ -19,6 +19,14 @@
   (GET "/status" _
     {:status  200
      :headers {"Content-Type" "html/text"}})
+  (GET "/secure" req
+    (if (get-in req [:headers "authorization"])
+      {:status  200
+       :headers {"Content-Type" "application/json"}
+       :body    (json/write-str {:ok true :message "authorized"})}
+      {:status  401
+       :headers {"Content-Type" "application/json"}
+       :body    (json/write-str {:ok false :message "missing Authorization header"})}))
   (GET "/items"
        []
        {:status  200

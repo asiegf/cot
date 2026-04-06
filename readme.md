@@ -32,9 +32,11 @@ Given a Ring handler and an OpenAPI YAML file:
             [my.api :refer [app]]))
 
 (def inputs
-  {[:get "/status"] {}
-   [:get "/items"] {}
-   [:get "/items/{id}"] {:id 0}})
+  {[:get "/status"]     {}
+   [:get "/items"]      {:params {:limit 10}}
+   [:get "/items/{id}"] {:params {:id 0}}
+   [:get "/secure"]     {:headers {:Authorization "Bearer token"
+                                   :X-Request-Id  "abc-123"}}})
 
 (deftestgen app inputs "openapi.yaml")
 ```
@@ -49,6 +51,7 @@ What this does:
 - Paths should match OpenAPI paths (e.g. `"/items/{id}"`).
 - Only endpoints listed in `inputs` get tests.
 - Current validation focuses on `application/json` responses with status `200`.
+- Each endpoint value is a map with two optional keys: `:params` (path and query parameter values) and `:headers` (header parameter values). Both default to `{}` when absent. Only parameters declared in the OpenAPI spec are forwarded to the request.
 
 **Testing (Consumer Project)**
 

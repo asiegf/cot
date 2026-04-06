@@ -9,7 +9,7 @@
 
 (def inputs
   {[:get "/status"] {}
-   [:get "/items"] {:limit 10}})
+   [:get "/items"]  {:params {:limit 10}}})
 
 (defn handler
   [req]
