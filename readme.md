@@ -9,14 +9,13 @@ COT is a Clojure library that generates `clojure.test` checks and `clojure.spec`
 If you are developing locally:
 
 ```clojure
-{:deps {cot/cot {:local/root "/absolute/path/to/cot"}}}
+{:deps {asiegf/cot {:local/root "/absolute/path/to/cot"}}}
 ```
 
 If you are consuming from a Git repo:
 
 ```clojure
-{:deps {cot/cot {:git/url "https://github.com/your-org/cot"
-                :git/sha "PUT_SHA_HERE"}}}
+{:deps {asiegf/cot {:git/url "https://github.com/asiegf/cot" :git/sha "863cbdb"}}}
 ```
 
 When published, replace the dependency with the Maven coordinates and version.
