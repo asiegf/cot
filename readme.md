@@ -15,7 +15,7 @@ If you are developing locally:
 If you are consuming from a Git repo:
 
 ```clojure
-{:deps {asiegf/cot {:git/url "https://github.com/asiegf/cot" :git/sha "863cbdb"}}}
+{:deps {asiegf/cot {:git/url "https://github.com/asiegf/cot" :git/sha "9333e7802e4da283ad14baf51604f968bde0b0ec"}}}
 ```
 
 When published, replace the dependency with the Maven coordinates and version.
