@@ -32,7 +32,7 @@
                ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
 
     "array"
-    `(s/coll-of ~(schema->spec (:items schema)))
+    `(s/coll-of ~(schema->spec (:items schema)) :min-count 1)
 
     (openapi-type->predicate schema)))
 
@@ -178,7 +178,7 @@
                                                                   [(keyword (name k#))
                                                                    v#]))
                                                               ~params-sym))
-                                   qs# (str/join "&" (map (fn [[k# v#]] (str k# "=" v#)) query-params#))]
+                                   qs# (str/join "&" (map (fn [[k# v#]] (str (name k#) "=" v#)) query-params#))]
                               (reduce (fn [r# [k# v#]]
                                         (mock/header r# (name k#) v#))
                                       (cond-> (mock/request ~method ~request-path-sym)
@@ -192,9 +192,11 @@
            (t/is (= 200 (:status ~response-sym)))
            ~(when spec-kw
               (if (array-response? operation)
-                `(t/is (every? #(s/valid? ~spec-kw %) ~body-sym)
-                       (str "Array items invalid: "
-                            (s/explain-str ~spec-kw (first ~body-sym))))
+                `(do
+                   (t/is (seq ~body-sym) "Response array should not be empty")
+                   (t/is (every? #(s/valid? ~spec-kw %) ~body-sym)
+                         (str "Array items invalid: "
+                              (s/explain-str ~spec-kw (first ~body-sym)))))
                 `(t/is (s/valid? ~spec-kw ~body-sym)
                        (s/explain-str ~spec-kw ~body-sym)))))))))
 

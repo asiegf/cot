@@ -22,7 +22,7 @@
            (gen/schema->spec schema)))))
 
 (deftest schema->spec-array-test
-  (is (= '(clojure.spec.alpha/coll-of clojure.core/string?)
+  (is (= '(clojure.spec.alpha/coll-of clojure.core/string? :min-count 1)
          (gen/schema->spec {:type "array"
                             :items {:type "string"}}))))
 
