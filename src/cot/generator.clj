@@ -173,8 +173,11 @@
                ~headers-sym (:headers ~input-sym {})
                ~request-path-sym (path-template->request-path
                                   ~path-str ~params-sym)
-               ~request-sym (let [query-params# (into {} (remove (fn [[k# _#]] (contains? ~path-params k#)) ~params-sym))
-                                   qs# (str/join "&" (map (fn [[k# v#]] (str (name k#) "=" v#)) query-params#))]
+               ~request-sym (let [query-params# (into {} (keep (fn [[k# v#]]
+                                                                (when-not (contains? ~path-params k#)
+                                                                  [(name k#) v#]))
+                                                              ~params-sym))
+                                   qs# (str/join "&" (map (fn [[k# v#]] (str k# "=" v#)) query-params#))]
                               (reduce (fn [r# [k# v#]]
                                         (mock/header r# (name k#) v#))
                                       (cond-> (mock/request ~method ~request-path-sym)
