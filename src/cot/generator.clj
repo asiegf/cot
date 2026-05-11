@@ -32,7 +32,13 @@
                ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
 
     "array"
-    `(s/coll-of ~(schema->spec (:items schema)) :min-count 1)
+    (let [min-count (if (contains? schema :minItems)
+                      (:minItems schema)
+                      1)
+          max-count (:maxItems schema)]
+      `(s/coll-of ~(schema->spec (:items schema))
+                  :min-count ~min-count
+                  ~@(when max-count [:max-count max-count])))
 
     (openapi-type->predicate schema)))
 
@@ -141,6 +147,20 @@
      (get-in operation
              [:responses :200 :content :application/json :schema :type])))
 
+(defn- response-schema
+  "Get the response schema for an operation."
+  [operation]
+  (get-in operation [:responses :200 :content :application/json :schema]))
+
+(defn- array-min-count
+  "Return the minimum array size to enforce.
+   For compatibility, arrays without minItems retain the historical non-empty
+   default. Use minItems: 0 to allow empty arrays explicitly."
+  [schema]
+  (if (contains? schema :minItems)
+    (:minItems schema)
+    1))
+
 (defn- path-param-names
   "Extract path parameter names from a path template string as a set of keywords.
    Input: \"/items/{id}\"
@@ -157,6 +177,11 @@
         path-params (path-param-names path-str)
         json?      (json-response? operation)
         spec-kw    (when json? (response-spec-keyword spec operation))
+        schema      (when json? (response-schema operation))
+        min-count   (when (and schema (= "array" (:type schema)))
+                      (array-min-count schema))
+        max-count   (when (and schema (= "array" (:type schema)))
+                      (:maxItems schema))
         input-sym   (gensym "input")
         params-sym  (gensym "params")
         headers-sym (gensym "headers")
@@ -193,7 +218,11 @@
            ~(when spec-kw
               (if (array-response? operation)
                 `(do
-                   (t/is (seq ~body-sym) "Response array should not be empty")
+                   (t/is (>= (count ~body-sym) ~min-count)
+                         ~(format "Response array should contain at least %d item(s)" min-count))
+                   ~@(when max-count
+                       [`(t/is (<= (count ~body-sym) ~max-count)
+                              ~(format "Response array should contain at most %d item(s)" max-count))])
                    (t/is (every? #(s/valid? ~spec-kw %) ~body-sym)
                          (str "Array items invalid: "
                               (s/explain-str ~spec-kw (first ~body-sym)))))

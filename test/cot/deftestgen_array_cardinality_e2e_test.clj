@@ -9,6 +9,7 @@
 
 (def inputs
   {[:get "/empty-items"]    {}
+   [:get "/explicit-empty-items"] {}
    [:get "/required-items"] {}
    [:get "/featured-items"] {}})
 
@@ -16,6 +17,11 @@
   [req]
   (case (:uri req)
     "/empty-items"
+    {:status 200
+     :headers {"Content-Type" "application/json"}
+     :body (json/write-str [])}
+
+    "/explicit-empty-items"
     {:status 200
      :headers {"Content-Type" "application/json"}
      :body (json/write-str [])}
@@ -40,6 +46,7 @@
 (def ^:private generated-tests
   (into {}
         (for [sym ['test-get-empty-items
+                   'test-get-explicit-empty-items
                    'test-get-required-items
                    'test-get-featured-items]
               :let [v (ns-resolve *ns* sym)]
@@ -66,11 +73,18 @@
                  :actual nil}))
     @t/*report-counters*))
 
-(deftest unbounded-array-response-allows-empty-collection
-  (testing "generated tests should accept empty arrays when the schema omits minItems"
+(deftest unbounded-array-response-rejects-empty-collection
+  (testing "generated tests should retain the compatibility default that arrays without minItems are non-empty"
     (let [counts (run-generated-test #'test-get-empty-items)]
+      (is (pos? (+ (:fail counts) (:error counts)))
+          (str "Expected generated test to fail for empty unbounded array response, got "
+               counts)))))
+
+(deftest explicit-zero-min-items-allows-empty-collection
+  (testing "generated tests should accept empty arrays when minItems explicitly permits them"
+    (let [counts (run-generated-test #'test-get-explicit-empty-items)]
       (is (zero? (+ (:fail counts) (:error counts)))
-          (str "Expected generated test to pass for empty unbounded array response, got "
+          (str "Expected generated test to pass for empty minItems: 0 array response, got "
                counts)))))
 
 (deftest generated-test-exceptions-report-as-errors
