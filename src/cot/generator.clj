@@ -18,40 +18,90 @@
     "object"  `map?
     `any?))
 
+(defn- safe-name
+  [x]
+  (if (keyword? x) (name x) (str x)))
+
+(defn- scoped-property-keyword
+  [scope prop-name]
+  (keyword (:property-ns scope) (safe-name prop-name)))
+
+(defn- child-scope
+  [scope prop-name]
+  (update scope :property-ns str "." (safe-name prop-name)))
+
+(defn- component-scope
+  [schema-name]
+  {:property-ns (str "cot.schema." (safe-name schema-name))})
+
+(defn- component-spec-keyword
+  [schema-name]
+  (keyword "cot.schema" (safe-name schema-name)))
+
 (defn schema->spec
   "Convert an OpenAPI schema to a spec form."
-  [schema]
+  ([schema]
+   (schema->spec schema {:property-ns "cot.schema"}))
+  ([schema scope]
+   (case (:type schema)
+     "object"
+     (let [required (set (map keyword (:required schema)))
+           prop-keys (keys (:properties schema))
+           req-keys (filter required prop-keys)
+           opt-keys (remove required prop-keys)]
+       `(s/keys ~@(when (seq req-keys)
+                    [:req-un (mapv #(scoped-property-keyword scope %) req-keys)])
+                ~@(when (seq opt-keys)
+                    [:opt-un (mapv #(scoped-property-keyword scope %) opt-keys)])))
+
+     "array"
+     `(s/coll-of ~(schema->spec (:items schema) scope) :min-count 1)
+
+     (openapi-type->predicate schema))))
+
+(defn- generate-property-spec-defs
+  [schema scope]
   (case (:type schema)
     "object"
-    (let [required (set (map keyword (:required schema)))
-          prop-keys (keys (:properties schema))
-          req-keys (filter required prop-keys)
-          opt-keys (remove required prop-keys)
-          ->spec-kw #(keyword "cot.schema" (name %))]
-      `(s/keys ~@(when (seq req-keys) [:req-un (mapv ->spec-kw req-keys)])
-               ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
+    (mapcat (fn [[prop-name prop-schema]]
+              (let [prop-scope (child-scope scope prop-name)]
+                (cons `(s/def ~(scoped-property-keyword scope prop-name)
+                         ~(schema->spec prop-schema prop-scope))
+                      (generate-property-spec-defs prop-schema prop-scope))))
+            (:properties schema))
 
     "array"
-    `(s/coll-of ~(schema->spec (:items schema)) :min-count 1)
+    (generate-property-spec-defs (:items schema) scope)
 
-    (openapi-type->predicate schema)))
+    []))
+
+(defn- generate-schema-spec-defs
+  [spec-kw scope schema]
+  (concat
+   (generate-property-spec-defs schema scope)
+   [`(s/def ~spec-kw
+       ~(schema->spec schema scope))]))
 
 (defn generate-spec-defs
   "Generate spec definitions for all properties in a schema."
   [schema-name schema]
-  (concat
-   (for [[prop-name prop-schema] (:properties schema)]
-     `(s/def ~(keyword "cot.schema" (name prop-name))
-        ~(schema->spec prop-schema)))
-   [`(s/def ~(keyword "cot.schema" (name schema-name))
-       ~(schema->spec schema))]))
+  (generate-schema-spec-defs
+   (component-spec-keyword schema-name)
+   (component-scope schema-name)
+   schema))
+
+(declare generate-response-spec-defs)
 
 (defn generate-all-specs
   "Generate spec definitions for all component schemas in an OpenAPI spec."
   [openapi-spec]
-  (mapcat (fn [[schema-name schema]]
-            (generate-spec-defs schema-name schema))
-          (get-schemas openapi-spec)))
+  (concat
+   (mapcat (fn [[schema-name schema]]
+             (generate-spec-defs schema-name schema))
+           (get-schemas openapi-spec))
+   (mapcat (fn [{:keys [path method operation]}]
+             (generate-response-spec-defs method path operation))
+           (parser/get-operations openapi-spec))))
 
 ;; -----------------------------------------------------------------------------
 ;; Test generation helpers
@@ -99,6 +149,57 @@
                    (str/replace #"/" "-")
                    (str/replace #"^-" "")))))
 
+(defn- operation-scope-name
+  [method path]
+  (-> (str (name method) "-" (keyword->path-str path) "-200-response")
+      (str/replace #"\{|\}" "")
+      (str/replace #"[^A-Za-z0-9]+" "-")
+      (str/replace #"(^-)|(-$)" "")))
+
+(defn- response-spec-keyword*
+  [method path]
+  (keyword "cot.response" (operation-scope-name method path)))
+
+(defn- response-item-spec-keyword
+  [method path]
+  (keyword "cot.response" (str (operation-scope-name method path) "-item")))
+
+(defn- response-scope
+  [method path]
+  {:property-ns (str "cot.response." (operation-scope-name method path))})
+
+(defn- response-item-scope
+  [method path]
+  {:property-ns (str "cot.response." (operation-scope-name method path) ".item")})
+
+(defn- inline-schema?
+  [schema]
+  (and schema (not (:$ref schema))))
+
+(defn generate-response-spec-defs
+  "Generate spec definitions for inline 200 JSON response schemas."
+  [method path operation]
+  (let [schema (get-in operation
+                       [:responses :200 :content :application/json :schema])]
+    (cond
+      (not (inline-schema? schema))
+      []
+
+      (and (= "array" (:type schema)) (get-in schema [:items :$ref]))
+      []
+
+      (= "array" (:type schema))
+      (generate-schema-spec-defs
+       (response-item-spec-keyword method path)
+       (response-item-scope method path)
+       (:items schema))
+
+      :else
+      (generate-schema-spec-defs
+       (response-spec-keyword* method path)
+       (response-scope method path)
+       schema))))
+
 (defn extract-params-by-location
   "Separate operation parameters by their 'in' field.
    Returns map like {:path [:id], :query [:limit :offset], :header [:Authorization]}"
@@ -120,19 +221,27 @@
   "Get the spec keyword for the response schema of an operation.
    If it's a ref, return the schema name; if it's an inline array,
    return a generated keyword."
-  [spec operation]
-  (let [schema (get-in operation
-                       [:responses :200 :content :application/json :schema])]
-    (cond
-      (:$ref schema)
-      (->> (str/split (:$ref schema) #"/")
-           last
-           (keyword "cot.schema"))
+  ([spec operation]
+   (response-spec-keyword spec operation nil nil))
+  ([spec operation method path]
+   (let [schema (get-in operation
+                        [:responses :200 :content :application/json :schema])]
+     (cond
+       (:$ref schema)
+       (->> (str/split (:$ref schema) #"/")
+            last
+            (keyword "cot.schema"))
 
-      (and (= "array" (:type schema)) (get-in schema [:items :$ref]))
-      (->> (str/split (get-in schema [:items :$ref]) #"/")
-           last
-           (keyword "cot.schema")))))
+       (and (= "array" (:type schema)) (get-in schema [:items :$ref]))
+       (->> (str/split (get-in schema [:items :$ref]) #"/")
+            last
+            (keyword "cot.schema"))
+
+       (and (= "array" (:type schema)) method path)
+       (response-item-spec-keyword method path)
+
+       (and (inline-schema? schema) method path)
+       (response-spec-keyword* method path)))))
 
 (defn- array-response?
   "Check if the response schema is an array type."
@@ -156,7 +265,7 @@
   (let [path-str   (keyword->path-str path)
         path-params (path-param-names path-str)
         json?      (json-response? operation)
-        spec-kw    (when json? (response-spec-keyword spec operation))
+        spec-kw    (when json? (response-spec-keyword spec operation method path))
         input-sym   (gensym "input")
         params-sym  (gensym "params")
         headers-sym (gensym "headers")

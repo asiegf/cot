@@ -1,5 +1,6 @@
 (ns cot.generator-helpers-test
   (:require [clojure.test :refer :all]
+            [clojure.spec.alpha :as s]
             [cot.generator :as gen]))
 
 (deftest openapi-type->predicate-test
@@ -25,6 +26,42 @@
   (is (= '(clojure.spec.alpha/coll-of clojure.core/string? :min-count 1)
          (gen/schema->spec {:type "array"
                             :items {:type "string"}}))))
+
+(deftest component-property-specs-are-scoped-test
+  (let [openapi-spec {:components
+                      {:schemas
+                       {:Person {:type "object"
+                                 :required ["id"]
+                                 :properties {:id {:type "string"}}}
+                        :Order {:type "object"
+                                :required ["id"]
+                                :properties {:id {:type "integer"}}}}}}]
+    (doseq [spec-form (gen/generate-all-specs openapi-spec)]
+      (eval spec-form))
+    (is (s/valid? :cot.schema/Person {:id "person-1"}))
+    (is (not (s/valid? :cot.schema/Person {:id 1})))
+    (is (s/valid? :cot.schema/Order {:id 1}))
+    (is (not (s/valid? :cot.schema/Order {:id "order-1"})))))
+
+(deftest inline-response-property-specs-are-scoped-test
+  (let [alpha-op (assoc-in {} [:responses :200 :content :application/json :schema]
+                           {:type "object"
+                            :required ["id"]
+                            :properties {:id {:type "string"}}})
+        beta-op (assoc-in {} [:responses :200 :content :application/json :schema]
+                          {:type "object"
+                           :required ["id"]
+                           :properties {:id {:type "integer"}}})
+        openapi-spec {:paths {(keyword "" "alpha") {:get alpha-op}
+                              (keyword "" "beta") {:get beta-op}}}]
+    (doseq [spec-form (gen/generate-all-specs openapi-spec)]
+      (eval spec-form))
+    (is (= :cot.response/get-alpha-200-response
+           (#'gen/response-spec-keyword openapi-spec alpha-op :get "/alpha")))
+    (is (s/valid? :cot.response/get-alpha-200-response {:id "alpha"}))
+    (is (not (s/valid? :cot.response/get-alpha-200-response {:id 1})))
+    (is (s/valid? :cot.response/get-beta-200-response {:id 1}))
+    (is (not (s/valid? :cot.response/get-beta-200-response {:id "beta"})))))
 
 (deftest keyword->path-str-test
   (is (= "/items/{id}"
