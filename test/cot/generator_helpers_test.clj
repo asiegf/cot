@@ -25,6 +25,15 @@
 (deftest schema->spec-array-test
   (is (= '(clojure.spec.alpha/coll-of clojure.core/string? :min-count 1)
          (gen/schema->spec {:type "array"
+                            :items {:type "string"}})))
+  (is (= '(clojure.spec.alpha/coll-of clojure.core/string? :min-count 0)
+         (gen/schema->spec {:type "array"
+                            :minItems 0
+                            :items {:type "string"}})))
+  (is (= '(clojure.spec.alpha/coll-of clojure.core/string? :min-count 2 :max-count 3)
+         (gen/schema->spec {:type "array"
+                            :minItems 2
+                            :maxItems 3
                             :items {:type "string"}}))))
 
 (deftest component-property-specs-are-scoped-test

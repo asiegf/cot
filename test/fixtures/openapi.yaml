@@ -47,6 +47,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Item'
+  /empty-items:
+    get:
+      summary: List empty items
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+  /explicit-empty-items:
+    get:
+      summary: List explicitly empty items
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 0
+                items:
+                  $ref: '#/components/schemas/Item'
+  /required-items:
+    get:
+      summary: List required items
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/Item'
+  /featured-items:
+    get:
+      summary: List featured items
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/Item'
 components:
   schemas:
     Status:

@@ -51,6 +51,7 @@ What this does:
 - Only endpoints listed in `inputs` get tests.
 - Current validation focuses on `application/json` responses with status `200`.
 - Each endpoint value is a map with two optional keys: `:params` (path and query parameter values) and `:headers` (header parameter values). Both default to `{}` when absent. Only parameters declared in the OpenAPI spec are forwarded to the request.
+- Array responses without `minItems` retain COT's compatibility default of requiring at least one item. Use `minItems: 0` to allow empty arrays explicitly; `maxItems` is enforced when present.
 
 **Testing (Consumer Project)**
 
