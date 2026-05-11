@@ -21,20 +21,22 @@
 (defn schema->spec
   "Convert an OpenAPI schema to a spec form."
   [schema]
-  (case (:type schema)
-    "object"
-    (let [required (set (map keyword (:required schema)))
-          prop-keys (keys (:properties schema))
-          req-keys (filter required prop-keys)
-          opt-keys (remove required prop-keys)
-          ->spec-kw #(keyword "cot.schema" (name %))]
-      `(s/keys ~@(when (seq req-keys) [:req-un (mapv ->spec-kw req-keys)])
-               ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
+  (if (:enum schema)
+    (list `partial `contains? (set (:enum schema)))
+    (case (:type schema)
+      "object"
+      (let [required (set (map keyword (:required schema)))
+            prop-keys (keys (:properties schema))
+            req-keys (filter required prop-keys)
+            opt-keys (remove required prop-keys)
+            ->spec-kw #(keyword "cot.schema" (name %))]
+        `(s/keys ~@(when (seq req-keys) [:req-un (mapv ->spec-kw req-keys)])
+                 ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
 
-    "array"
-    `(s/coll-of ~(schema->spec (:items schema)) :min-count 1)
+      "array"
+      `(s/coll-of ~(schema->spec (:items schema)) :min-count 1)
 
-    (openapi-type->predicate schema)))
+      (openapi-type->predicate schema))))
 
 (defn generate-spec-defs
   "Generate spec definitions for all properties in a schema."
