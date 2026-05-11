@@ -50,7 +50,7 @@ What this does:
 - Paths should match OpenAPI paths (e.g. `"/items/{id}"`).
 - Only endpoints listed in `inputs` get tests.
 - Current validation focuses on `application/json` responses with status `200`.
-- Each endpoint value is a map with two optional keys: `:params` (path and query parameter values) and `:headers` (header parameter values). Both default to `{}` when absent. Only parameters declared in the OpenAPI spec are forwarded to the request.
+- Each endpoint value is a map with two optional keys: `:params` (path and query parameter values) and `:headers` (header parameter values). Both default to `{}` when absent. Path params are substituted into the URL, all remaining `:params` entries are forwarded as query params, and all `:headers` entries are sent as headers; these maps are not filtered by OpenAPI operation parameter declarations.
 
 **Testing (Consumer Project)**
 
