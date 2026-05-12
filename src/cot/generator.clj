@@ -141,6 +141,46 @@
      (get-in operation
              [:responses :200 :content :application/json :schema :type])))
 
+(defn- operation-security-schemes
+  "Return the required security scheme definitions for an operation.
+   Uses the operation's first requirement set, or the top-level security
+   fallback when the operation does not declare security."
+  [spec operation]
+  (let [reqs      (or (:security operation) (:security spec))
+        defs      (get-in spec [:components :securitySchemes])
+        first-req (first reqs)]
+    (into []
+          (keep (fn [[scheme-name _]]
+                  (when-let [scheme (get defs scheme-name)]
+                    (assoc scheme :scheme-name (name scheme-name)))))
+          first-req)))
+
+(defn- scheme->header
+  "Return an auth header pair for supported schemes, or nil."
+  [scheme value]
+  (when (and scheme value)
+    (case (:type scheme)
+      "http" (case (:scheme scheme)
+               "bearer" ["Authorization" (str "Bearer " value)]
+               "basic"  ["Authorization" (str "Basic " value)]
+               nil)
+      "apiKey" (when (= "header" (:in scheme))
+                 [(:name scheme) value])
+      nil)))
+
+(defn apply-security
+  "Attach supported security headers to a Ring mock request.
+   `security-input` is keyed by security scheme keyword. Missing credentials
+   and unsupported schemes are skipped."
+  [request schemes security-input]
+  (reduce (fn [req scheme]
+            (let [value (get security-input (keyword (:scheme-name scheme)))]
+              (if-let [[header-name header-value] (scheme->header scheme value)]
+                (mock/header req header-name header-value)
+                req)))
+          request
+          (or schemes [])))
+
 (defn- path-param-names
   "Extract path parameter names from a path template string as a set of keywords.
    Input: \"/items/{id}\"
@@ -157,6 +197,7 @@
         path-params (path-param-names path-str)
         json?      (json-response? operation)
         spec-kw    (when json? (response-spec-keyword spec operation))
+        schemes    (operation-security-schemes spec operation)
         input-sym   (gensym "input")
         params-sym  (gensym "params")
         headers-sym (gensym "headers")
@@ -179,12 +220,13 @@
                                                                    v#]))
                                                               ~params-sym))
                                    qs# (str/join "&" (map (fn [[k# v#]] (str (name k#) "=" v#)) query-params#))]
-                              (reduce (fn [r# [k# v#]]
-                                        (mock/header r# (name k#) v#))
-                                      (cond-> (mock/request ~method ~request-path-sym)
-                                        (seq query-params#) (assoc :params query-params#)
-                                        (seq qs#) (mock/query-string qs#))
-                                      ~headers-sym))
+                              (-> (reduce (fn [r# [k# v#]]
+                                            (mock/header r# (name k#) v#))
+                                          (cond-> (mock/request ~method ~request-path-sym)
+                                            (seq query-params#) (assoc :params query-params#)
+                                            (seq qs#) (mock/query-string qs#))
+                                          ~headers-sym)
+                                  (apply-security ~schemes (:security ~input-sym))))
                ~response-sym (~handler-sym ~request-sym)
                ~@(when json?
                    [body-sym `(json/read-str (:body ~response-sym)
