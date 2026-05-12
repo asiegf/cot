@@ -53,3 +53,18 @@
     (is (= :cot.schema/Item
            (#'gen/response-spec-keyword nil op)))
     (is (true? (#'gen/array-response? op)))))
+
+(deftest security-request-values-selects-later-satisfiable-alternative-test
+  (let [schemes {:ApiKeyAuth {:type "apiKey"
+                              :in "header"
+                              :name "X-API-Key"}
+                 :BearerAuth {:type "http"
+                              :scheme "bearer"}}
+        requirements [{:ApiKeyAuth []}
+                      {:BearerAuth []}]]
+    (is (= {:headers {:Authorization "Bearer token-123"}
+            :query-params {}}
+           (#'gen/security-request-values
+            schemes
+            requirements
+            {:BearerAuth "token-123"})))))

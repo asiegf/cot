@@ -9,7 +9,8 @@
 
 (def inputs
   {[:get "/status"] {}
-   [:get "/items"]  {:params {:limit 10}}})
+   [:get "/items"]  {:params {:limit 10}}
+   [:get "/secure"] {:security {:BearerAuth "token-123"}}})
 
 (defn handler
   [req]
@@ -23,6 +24,15 @@
     {:status 200
      :headers {"Content-Type" "application/json"}
      :body (json/write-str [{:id 1 :name "item-1"}])}
+
+    "/secure"
+    (if (= "Bearer token-123" (get-in req [:headers "authorization"]))
+      {:status 200
+       :headers {"Content-Type" "application/json"}
+       :body (json/write-str {:ok true :message "authorized"})}
+      {:status 401
+       :headers {"Content-Type" "application/json"}
+       :body (json/write-str {:error "unauthorized"})})
 
     {:status 404
      :headers {"Content-Type" "application/json"}
@@ -41,4 +51,5 @@
   (let [names (test-var-names)]
     (is (contains? names 'test-get-status))
     (is (contains? names 'test-get-items))
+    (is (contains? names 'test-get-secure))
     (is (not (contains? names 'test-get-items-id)))))

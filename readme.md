@@ -35,7 +35,8 @@ Given a Ring handler and an OpenAPI YAML file:
    [:get "/items"]      {:params {:limit 10}}
    [:get "/items/{id}"] {:params {:id 0}}
    [:get "/secure"]     {:headers {:Authorization "Bearer token"
-                                   :X-Request-Id  "abc-123"}}})
+                                   :X-Request-Id  "abc-123"}
+                          :security {:BearerAuth "token"}}})
 
 (deftestgen app inputs "openapi.yaml")
 ```
@@ -50,7 +51,7 @@ What this does:
 - Paths should match OpenAPI paths (e.g. `"/items/{id}"`).
 - Only endpoints listed in `inputs` get tests.
 - Current validation focuses on `application/json` responses with status `200`.
-- Each endpoint value is a map with two optional keys: `:params` (path and query parameter values) and `:headers` (header parameter values). Both default to `{}` when absent. Only parameters declared in the OpenAPI spec are forwarded to the request.
+- Each endpoint value is a map with optional keys: `:params` (path and query parameter values), `:headers` (header values), and `:security` (OpenAPI security scheme credentials keyed by scheme name). Missing keys default to `{}`. For security requirements, COT picks the first OpenAPI requirement alternative whose schemes all have credentials in `:security`; apiKey header/query schemes and HTTP bearer schemes are forwarded to the request.
 
 **Testing (Consumer Project)**
 

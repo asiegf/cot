@@ -111,6 +111,98 @@
           {}
           (:parameters operation)))
 
+(defn- plain-map
+  [m]
+  (into {} (map (fn [[k v]]
+                  [k (if (map? v) (plain-map v) v)])
+                m)))
+
+(defn- operation-security-requirements
+  [spec operation]
+  (some->> (if (contains? operation :security)
+             (:security operation)
+             (:security spec))
+           (mapv plain-map)))
+
+(defn- security-schemes
+  [spec]
+  (plain-map (get-in spec [:components :securitySchemes] {})))
+
+(defn- credential-for
+  [security-input scheme-name]
+  (let [plain-name (name scheme-name)
+        candidates [scheme-name
+                    (keyword plain-name)
+                    plain-name]]
+    (some #(when (contains? security-input %) (get security-input %))
+          candidates)))
+
+(defn- bearer-token
+  [credential]
+  (let [token (if (map? credential)
+                (or (:token credential) (:value credential))
+                credential)
+        token-str (str token)]
+    (if (str/starts-with? (str/lower-case token-str) "bearer ")
+      token-str
+      (str "Bearer " token-str))))
+
+(defn- api-key-value
+  [credential]
+  (if (map? credential)
+    (or (:value credential) (:token credential) (:api-key credential))
+    credential))
+
+(defn- requirement-satisfiable?
+  [schemes security-input requirement]
+  (every? (fn [[scheme-name _scopes]]
+            (and (contains? schemes scheme-name)
+                 (some? (credential-for security-input scheme-name))))
+          requirement))
+
+(defn- select-security-requirement
+  [schemes security-input requirements]
+  (some (fn [requirement]
+          (when (requirement-satisfiable? schemes security-input requirement)
+            requirement))
+        requirements))
+
+(defn- scheme-request-values
+  [scheme credential]
+  (case (:type scheme)
+    "apiKey"
+    (let [value (api-key-value credential)]
+      (case (:in scheme)
+        "header" {:headers {(keyword (:name scheme)) value}}
+        "query"  {:query-params {(keyword (:name scheme)) value}}
+        {:headers {} :query-params {}}))
+
+    "http"
+    (if (= "bearer" (str/lower-case (or (:scheme scheme) "")))
+      {:headers {:Authorization (bearer-token credential)}}
+      {:headers {} :query-params {}})
+
+    {:headers {} :query-params {}}))
+
+(defn security-request-values
+  "Return generated request headers/query params for the first satisfiable
+   OpenAPI security requirement. Security requirements are OR alternatives;
+   schemes within one requirement are ANDed."
+  [schemes requirements security-input]
+  (if-let [requirement (select-security-requirement schemes
+                                                    security-input
+                                                    requirements)]
+    (reduce (fn [acc [scheme-name _scopes]]
+              (let [credential (credential-for security-input scheme-name)
+                    request-values (scheme-request-values (get schemes scheme-name)
+                                                          credential)]
+                (-> acc
+                    (update :headers merge (:headers request-values))
+                    (update :query-params merge (:query-params request-values)))))
+            {:headers {} :query-params {}}
+            requirement)
+    {:headers {} :query-params {}}))
+
 (defn- json-response?
   "Check if the operation returns application/json."
   [operation]
@@ -160,6 +252,7 @@
         input-sym   (gensym "input")
         params-sym  (gensym "params")
         headers-sym (gensym "headers")
+        security-values-sym (gensym "security-values")
         request-path-sym (gensym "request-path")
         request-sym  (gensym "request")
         response-sym (gensym "response")
@@ -171,20 +264,27 @@
          (let [~input-sym   (get ~inputs-sym [~method ~path-str] {})
                ~params-sym  (:params ~input-sym {})
                ~headers-sym (:headers ~input-sym {})
+               ~security-values-sym (security-request-values
+                                     ~(security-schemes spec)
+                                     ~(operation-security-requirements spec operation)
+                                     (:security ~input-sym {}))
                ~request-path-sym (path-template->request-path
                                   ~path-str ~params-sym)
-               ~request-sym (let [query-params# (into {} (keep (fn [[k# v#]]
-                                                                (when-not (contains? ~path-params k#)
-                                                                  [(keyword (name k#))
-                                                                   v#]))
-                                                              ~params-sym))
+               ~request-sym (let [query-params# (merge
+                                                  (:query-params ~security-values-sym)
+                                                  (into {} (keep (fn [[k# v#]]
+                                                                   (when-not (contains? ~path-params k#)
+                                                                     [(keyword (name k#))
+                                                                      v#]))
+                                                                 ~params-sym)))
                                    qs# (str/join "&" (map (fn [[k# v#]] (str (name k#) "=" v#)) query-params#))]
                               (reduce (fn [r# [k# v#]]
-                                        (mock/header r# (name k#) v#))
+                                        (mock/header r# (if (keyword? k#) (name k#) (str k#)) v#))
                                       (cond-> (mock/request ~method ~request-path-sym)
                                         (seq query-params#) (assoc :params query-params#)
                                         (seq qs#) (mock/query-string qs#))
-                                      ~headers-sym))
+                                      (merge (:headers ~security-values-sym)
+                                             ~headers-sym)))
                ~response-sym (~handler-sym ~request-sym)
                ~@(when json?
                    [body-sym `(json/read-str (:body ~response-sym)
@@ -218,6 +318,8 @@
                            into the URL, all remaining params are forwarded as
                            query string
                 :headers — map of header values to send with the request
+                :security — map of OpenAPI security scheme names to credentials;
+                            the first satisfiable security requirement is used
    spec-path: Path to the OpenAPI YAML file
 
    Also generates a `reload-tests!` function that can be called from the REPL

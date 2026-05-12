@@ -47,7 +47,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Item'
+  /secure:
+    get:
+      summary: Secure endpoint
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     Status:
       type: object
