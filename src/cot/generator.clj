@@ -213,11 +213,17 @@
    handler-sym: Symbol referring to the Ring handler function
    inputs-sym: Symbol referring to a map of [method path] -> input
               Only endpoints with keys in this map will have tests generated.
-              Each input value is a map with two optional keys:
+              Each input value is a map with optional keys:
                 :params  — map of parameter values; path params are substituted
                            into the URL, all remaining params are forwarded as
                            query string
                 :headers — map of header values to send with the request
+                :security — map of OpenAPI security scheme names to credentials.
+                            Security requirements are OR alternatives; COT uses
+                            the first requirement whose schemes all have
+                            credentials. Supported schemes are apiKey in header
+                            or query and HTTP bearer; unsupported schemes or
+                            unsatisfied requirements add no security values.
    spec-path: Path to the OpenAPI YAML file
 
    Also generates a `reload-tests!` function that can be called from the REPL
