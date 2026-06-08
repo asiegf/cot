@@ -21,12 +21,12 @@ paths:
       tags:
         - status
       responses:
-        '204':
+        '200':
           description: API is healthy
   /items:
     get:
       summary: Get items
-      description: Returns a list of all items.
+      description: Returns a list of all items. The list may be empty.
       operationId: getItems
       tags:
         - items
@@ -39,19 +39,34 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Item'
+  /featured-items:
+    get:
+      summary: Get featured items
+      description: Returns a bounded list of featured items.
+      operationId: getFeaturedItems
+      tags:
+        - items
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 2
+                items:
+                  $ref: '#/components/schemas/Item'
   /secure:
     get:
       summary: Get secure resource
-      description: Returns a resource that requires an Authorization header.
+      description: Returns a resource that requires bearer authentication.
       operationId: getSecure
       tags:
         - status
-      parameters:
-        - name: Authorization
-          in: header
-          required: true
-          schema:
-            type: string
+      security:
+        - bearerAuth: []
+          profileAuth: []
       responses:
         '200':
           description: Successful response
@@ -59,6 +74,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+        '401':
+          description: Missing or invalid bearer token
   /items/{id}:
     get:
       summary: Get a single item
@@ -79,7 +96,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Item'
+        '401':
+          description: Missing token header
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    profileAuth:
+      type: apiKey
+      in: header
+      name: profile
   schemas:
     Item:
       type: object
@@ -88,6 +115,11 @@ components:
           type: integer
         name:
           type: string
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
     Status:
       type: object
       properties:

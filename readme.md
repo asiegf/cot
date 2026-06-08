@@ -26,31 +26,86 @@ Given a Ring handler and an OpenAPI YAML file:
 
 ```clojure
 (ns my.api-test
-  (:require [clojure.test :refer :all]
-            [cot.generator :refer [deftestgen]]
+  (:require [cot.generator :refer [deftestgen]]
             [my.api :refer [app]]))
 
-(def inputs
-  {[:get "/status"]     {}
-   [:get "/items"]      {:params {:limit 10}}
-   [:get "/items/{id}"] {:params {:id 0}}
-   [:get "/secure"]     {:headers {:Authorization "Bearer token"
-                                   :X-Request-Id  "abc-123"}}})
+(def validation
+  '[["/items"]
+    [:get "/items/{id}"
+     {:params {:id ITEM_ID}
+      :headers {:Authorization AUTHORIZATION}}]
+    [:get "/items/{id}"
+     {:params {:id OTHER_ITEM_ID}
+      :headers {:Authorization AUTHORIZATION}}
+     404]])
 
-(deftestgen app inputs "openapi.yaml")
+(deftestgen app validation "openapi.yaml" "runtime-inputs.edn")
 ```
 
-What this does:
-- Parses the OpenAPI file.
-- Generates `clojure.spec` definitions for component schemas.
-- Generates `clojure.test` tests for only the `[method path]` keys present in `inputs`.
-- Validates `200` JSON responses against the corresponding schema.
+The ordered validation vector accepts these case forms:
 
-**Notes**
-- Paths should match OpenAPI paths (e.g. `"/items/{id}"`).
-- Only endpoints listed in `inputs` get tests.
-- Current validation focuses on `application/json` responses with status `200`.
-- Each endpoint value is a map with two optional keys: `:params` (path and query parameter values) and `:headers` (header parameter values). Both default to `{}` when absent. Only parameters declared in the OpenAPI spec are forwarded to the request.
+```clojure
+["/items"]                                  ; GET, no input, expect 200
+["/items" {:params {:limit 10}}]            ; GET, expect 200
+[:post "/items" {:headers {:token TOKEN}}]  ; explicit method, expect 200
+[:get "/items/{id}" {:params {:id ID}} 404] ; explicit method and status
+```
+
+Cases remain in declaration order. The vector can contain the same endpoint
+more than once, including cases with different inputs or expected statuses.
+The method defaults to `:get` and the expected status defaults to `200`.
+Expected statuses MUST be declared for the operation in the OpenAPI document;
+an undocumented expected status or unknown operation generates a distinct
+failing `clojure.test` instead of preventing the remaining cases from running.
+
+Input maps accept only `:params` and `:headers`, and both values MUST be maps
+when present. Path parameters are substituted into the URL, remaining
+`:params` entries are sent as query parameters, and every `:headers` entry is
+sent as an HTTP header.
+
+**Runtime Inputs**
+
+Quote the validation vector when it contains placeholder symbols. Pass an
+optional runtime-input EDN file as the fourth argument to `deftestgen`:
+
+```clojure
+(deftestgen app validation "openapi.yaml" "runtime-inputs.edn")
+```
+
+The EDN file maps placeholder symbols to literal values:
+
+```clojure
+{ITEM_ID 42
+ AUTHORIZATION "Bearer local-token"}
+```
+
+For secrets supplied by the environment, use the `#env` tagged literal:
+
+```clojure
+{ITEM_ID 42
+ AUTHORIZATION #env "API_AUTHORIZATION"}
+```
+
+Runtime inputs are loaded when generated tests run. Placeholder resolution is
+recursive within `:params` and `:headers`. A missing placeholder, missing
+runtime-input file, or unset environment variable fails clearly instead of
+sending an incomplete request. Keep non-secret, stable test values as EDN
+literals; use `#env` only for values that must be supplied externally.
+
+The legacy `{[method path] input-map}` form remains supported for compatibility,
+but it cannot represent duplicate cases and is not recommended for new tests.
+See `example/inputs.edn` for a runnable file that mixes literal values with
+`PROFILE #env "USER"`. The example `/secure` handler requires the received
+profile header to equal `USER`, and a second case verifies that a different
+profile is rejected.
+
+**Validation Notes**
+
+- Paths MUST match OpenAPI paths, for example `"/items/{id}"`.
+- Only listed cases generate tests.
+- A declared JSON response schema is validated for the expected status.
+- Array `minItems` and `maxItems` bounds are enforced when present.
+- Schema properties with `enum` constraints are validated against their allowed values.
 
 **Testing (Consumer Project)**
 

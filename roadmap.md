@@ -1,4 +1,4 @@
-# COT Roadme
+# COT Roadmap
 
 This file captures a sensible roadmap for a Clojure library that generates tests from OpenAPI specs.
 
@@ -8,17 +8,19 @@ Turn an OpenAPI spec into runnable, maintainable `clojure.test` checks that vali
 **Current Capabilities**
 - Parse OpenAPI 3.x YAML.
 - Generate `clojure.spec` definitions for component schemas.
-- Generate `clojure.test` tests for operations that are explicitly provided in an inputs map.
-- Validate `200` JSON responses against specs, including array item validation.
-- Build mock Ring requests with path and query params.
+- Generate ordered `clojure.test` cases, including repeated cases for the same operation.
+- Validate declared expected response statuses and their JSON schemas.
+- Build mock Ring requests with path, query, and header inputs.
+- Resolve runtime input placeholders from EDN literals or environment variables.
+- Support the legacy operation-to-input map form for compatibility.
 - Reload tests from the REPL via `reload-tests!`.
 
 **Expected In The Near Term**
-- Support more status codes and response content types.
-- Support request bodies, headers, and cookies in generated tests.
+- Support more response content types.
+- Support request bodies and cookies in generated tests.
 - Better schema coverage: `enum`, `format`, `nullable`, `min/max`, `pattern`, `allOf/oneOf/anyOf`.
 - Resolve `$ref` in more places, including request and response bodies.
-- Configurable defaults and test inputs (e.g., generators or fixtures).
+- Generated or richer fixture-based test inputs.
 - Clearer test output when validation fails.
 
 **Expected In The Medium Term**

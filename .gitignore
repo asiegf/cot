@@ -3,3 +3,21 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Project AI / agent coordination files should be versioned.
+!AGENTS.md
+!CLAUDE.md
+!ai/
+!ai/**
+!.agents/
+!.agents/**
+
+# Beads shared project state exports should be versioned.
+!.beads/
+!.beads/issues.jsonl
+!.beads/interactions.jsonl
+!.beads/README.md
+!.beads/config.yaml
+!.beads/metadata.json
+!.beads/hooks/
+!.beads/hooks/**

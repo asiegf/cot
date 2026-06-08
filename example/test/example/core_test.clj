@@ -1,20 +1,39 @@
 (ns example.core-test
-  (:require [clojure.test :refer :all]
-            [ring.mock.request :as mock]
-            [clojure.data.json :as json]
-            [clojure.spec.alpha :as s :refer-macros [deftest testing]]
+  (:require [clojure.java.io :as io]
             [cot.generator :refer [deftestgen]]
             [example.core :refer [app]]))
 
-(deftestgen app
-  {[:get "/status"]     {}
-   [:get "/items"]      {}
-   [:get "/items/{id}"] {:params  {:id 0, :mode "def"}
-                         :headers {:token "Bearer token"}}
-   [:get "/secure"]     {:headers {:token "Bearer token"}}}
-  "openapi.yaml")
+(defn- example-path [filename]
+  (if (.exists (io/file filename))
+    filename
+    (str "example/" filename)))
 
+(def openapi-spec-path (example-path "openapi.yaml"))
+(def runtime-inputs-path (example-path "inputs.edn"))
 
+;; Quote the cases so placeholder symbols are resolved from inputs.edn
+;; when each generated test runs, rather than when this namespace is compiled.
+(def validation
+  '[["/status" 200] ;; explicit expected status
+    ;; ["/xyz" {} 200] ;; uncomment to demonstrate a test-level failure
+    ["/status"]
+    [:get "/items/{id}"
+     {:params {:id ITEM_ID, :mode MODE}}
+     401]
+    [:get "/items/{id}"
+     {:params {:id ITEM_ID, :mode MODE}
+      :headers {:token TOKEN}}
+     200]
+    ["/secure"
+     {:headers {:Authorization AUTHORIZATION
+                :profile PROFILE}}]
+    ["/secure"
+     {:headers {:Authorization AUTHORIZATION
+                :profile "not-the-env-profile"}}
+     401]])
 
-
-
+(deftestgen
+  app
+  validation
+  openapi-spec-path
+  runtime-inputs-path)

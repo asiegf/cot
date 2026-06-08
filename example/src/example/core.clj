@@ -3,32 +3,38 @@
             [cot.generator :as gen]
             [clojure.spec.alpha :as spec]
             [clojure.data.json :as json]
+            [clojure.string :as str]
             [org.httpkit.server :as http]
             [compojure.core :refer :all]
             [compojure.route :as route]
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.keyword-params :refer [wrap-keyword-params]]))
 
-
-(def items  [{:id 0, :name "numero-uno"}])
+(def items  [])
+(def featured-items [{:id 0, :name "numero-uno"}])
 (def items' [{:id "0", :label "wrong..."}])
+(def expected-profile "USER")
 
 
 (defn find-item [id]
-  (first (filter #(= (:id %) id) items)))
+  (first (filter #(= (:id %) id) featured-items)))
 
 (defroutes app
   (GET "/status" _
     {:status  200
      :headers {"Content-Type" "html/text"}})
   (GET "/secure" req
-    (if (get-in req [:headers "token"])
-      {:status  200
-       :headers {"Content-Type" "application/json"}
-       :body    (json/write-str {:ok true :message "authorized"})}
-      {:status  401
-       :headers {"Content-Type" "application/json"}
-       :body    (json/write-str {:ok false :message "missing token in header"})}))
+    (let [auth    (get-in req [:headers "authorization"])
+          profile (get-in req [:headers "profile"])]
+      (if (and auth
+               (str/starts-with? auth "Bearer ")
+               (= expected-profile profile))
+        {:status  200
+         :headers {"Content-Type" "application/json"}
+         :body    (json/write-str {:ok true :message (str "authorized as " profile)})}
+        {:status  401
+         :headers {"Content-Type" "application/json"}
+         :body    (json/write-str {:ok false :message "missing or invalid credentials"})})))
   (GET "/items"
       []
       {:status  200
@@ -36,6 +42,11 @@
        :body    (json/write-str items) ;; => matches spec
        ;; :body    (json/write-str items') ;; => does NOT match spec
        })
+  (GET "/featured-items"
+      []
+      {:status  200
+       :headers {"Content-Type" "application/json"}
+       :body    (json/write-str featured-items)})
   (GET "/items/:id"
       req
       (if-not (get-in req [:headers "token"])
@@ -67,4 +78,3 @@
 
 (defn -main [& args]
   (start-server (or (some-> args first Integer/parseInt) 8080)))
-

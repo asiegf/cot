@@ -1,0 +1,8 @@
+{ITEM_ID 0
+ MODE "def"
+ TOKEN "example-token"
+ AUTHORIZATION "Bearer example-token"
+
+ ;; /secure requires this header to match the current USER value.
+ ;; The test therefore validates that #env was resolved and forwarded.
+ PROFILE #env "USER"}
