@@ -42,6 +42,19 @@ Given a Ring handler and an OpenAPI YAML file:
 (deftestgen app validation "openapi.yaml" "runtime-inputs.edn")
 ```
 
+Multiple `deftestgen` forms MAY coexist in one namespace. The validation var
+names identify independent test groups, allowing public and authenticated
+cases to target the same operation:
+
+```clojure
+(deftestgen app public openapi inputs)
+(deftestgen app with-creds openapi inputs)
+```
+
+Each group exposes its own reload function, such as `reload-public-tests!` and
+`reload-with-creds-tests!`. `reload-tests!` remains an alias for the most
+recently declared group.
+
 The ordered validation vector accepts these case forms:
 
 ```clojure
@@ -104,6 +117,7 @@ profile is rejected.
 - Paths MUST match OpenAPI paths, for example `"/items/{id}"`.
 - Only listed cases generate tests.
 - A declared JSON response schema is validated for the expected status.
+- Responses without a declared JSON schema are status-checked only.
 - Array `minItems` and `maxItems` bounds are enforced when present.
 - Schema properties with `enum` constraints are validated against their allowed values.
 

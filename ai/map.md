@@ -4,6 +4,12 @@ Last updated: 2026-06-08
 
 ## Open Beads
 
+- P1 schema isolation:
+  - `cot-na6` — Scope generated property specs by schema. Closed locally.
+- P1 generated test grouping:
+  - `cot-cti` — Allow multiple deftestgen invocations per namespace. Closed locally.
+- P1 response validation:
+  - `cot-v60` — Restore response body validation against OpenAPI. Closed locally.
 - P3 repository hygiene:
   - `cot-ht7` — Version AI coordination files in gitignore. Closed locally.
 - P2 validation diagnostics:
@@ -55,6 +61,9 @@ Last updated: 2026-06-08
   - `cot-b7g` on `codex/cot-b7g-security-coverage`.
   - `cot-0z9` on `codex/cot-0z9-e2e-var-resolution`.
 - Completed locally:
+  - `cot-na6` — owner-scoped component and inline-response property specs.
+  - `cot-cti` — independent generated-test groups for multiple `deftestgen` forms.
+  - `cot-v60` — restored schema-bearing example cases and non-empty object validation.
   - `cot-ht7` — explicit `.gitignore` keep rules for AI/agent and shared Beads files.
   - `cot-msz` — structured invalid-validation failure diagnostics.
   - `cot-w28` — root `clj -X:test-integration` alias.

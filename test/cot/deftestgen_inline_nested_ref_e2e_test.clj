@@ -34,7 +34,7 @@
 
 (def ^:private generated-tests
   (into {}
-        (for [sym ['test-get-profile 'test-get-profiles]
+        (for [sym ['test-get-profile-inputs 'test-get-profiles-inputs]
               :let [v (ns-resolve *ns* sym)]
               :when v]
           [v (:test (meta v))])))
@@ -59,26 +59,32 @@
                  :actual nil}))
     @t/*report-counters*))
 
+(defn- generated-test-var [sym]
+  (ns-resolve 'cot.deftestgen-inline-nested-ref-e2e-test sym))
+
 (deftest inline-object-response-with-nested-ref-should-fail-invalid-data
   (testing "generated tests should reject invalid nested data inside inline object responses"
-    (let [counts (run-generated-test #'test-get-profile)]
+    (let [counts (run-generated-test
+                  (generated-test-var 'test-get-profile-inputs))]
       (is (pos? (+ (:fail counts) (:error counts)))
           (str "Expected generated test to fail for invalid nested inline object response, got "
                counts)))))
 
 (deftest generated-test-exceptions-report-as-errors
   (testing "generated test helper exceptions should increment clojure.test error counters"
-    (let [counts (with-redefs [generated-tests {#'test-get-profile
-                                                (fn []
-                                                  (throw (ex-info "boom" {})))}]
-                   (run-generated-test #'test-get-profile))]
+    (let [test-var (generated-test-var 'test-get-profile-inputs)
+          counts   (with-redefs [generated-tests {test-var
+                                                  (fn []
+                                                    (throw (ex-info "boom" {})))}]
+                     (run-generated-test test-var))]
       (is (pos? (:error counts))
           (str "Expected generated test exception to increment error counter, got "
                counts)))))
 
 (deftest inline-array-response-with-nested-ref-should-fail-invalid-data
   (testing "generated tests should reject invalid nested data inside inline array responses"
-    (let [counts (run-generated-test #'test-get-profiles)]
+    (let [counts (run-generated-test
+                  (generated-test-var 'test-get-profiles-inputs))]
       (is (pos? (+ (:fail counts) (:error counts)))
           (str "Expected generated test to fail for invalid nested inline array response, got "
                counts)))))

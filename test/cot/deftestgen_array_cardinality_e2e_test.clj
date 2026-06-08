@@ -39,9 +39,9 @@
 
 (def ^:private generated-tests
   (into {}
-        (for [sym ['test-get-empty-items
-                   'test-get-required-items
-                   'test-get-featured-items]
+        (for [sym ['test-get-empty-items-inputs
+                   'test-get-required-items-inputs
+                   'test-get-featured-items-inputs]
               :let [v (ns-resolve *ns* sym)]
               :when v]
           [v (:test (meta v))])))
@@ -66,33 +66,40 @@
                  :actual nil}))
     @t/*report-counters*))
 
+(defn- generated-test-var [sym]
+  (ns-resolve 'cot.deftestgen-array-cardinality-e2e-test sym))
+
 (deftest unbounded-array-response-allows-empty-collection
   (testing "generated tests should accept empty arrays when the schema omits minItems"
-    (let [counts (run-generated-test #'test-get-empty-items)]
+    (let [counts (run-generated-test
+                  (generated-test-var 'test-get-empty-items-inputs))]
       (is (zero? (+ (:fail counts) (:error counts)))
           (str "Expected generated test to pass for empty unbounded array response, got "
                counts)))))
 
 (deftest generated-test-exceptions-report-as-errors
   (testing "generated test helper exceptions should increment clojure.test error counters"
-    (let [counts (with-redefs [generated-tests {#'test-get-empty-items
-                                                (fn []
-                                                  (throw (ex-info "boom" {})))}]
-                   (run-generated-test #'test-get-empty-items))]
+    (let [test-var (generated-test-var 'test-get-empty-items-inputs)
+          counts   (with-redefs [generated-tests {test-var
+                                                  (fn []
+                                                    (throw (ex-info "boom" {})))}]
+                     (run-generated-test test-var))]
       (is (pos? (:error counts))
           (str "Expected generated test exception to increment error counter, got "
                counts)))))
 
 (deftest min-items-constraint-fails-empty-collection
   (testing "generated tests should reject empty arrays when minItems is present"
-    (let [counts (run-generated-test #'test-get-required-items)]
+    (let [counts (run-generated-test
+                  (generated-test-var 'test-get-required-items-inputs))]
       (is (pos? (+ (:fail counts) (:error counts)))
           (str "Expected generated test to fail for empty minItems-constrained array response, got "
                counts)))))
 
 (deftest max-items-constraint-fails-oversized-collection
   (testing "generated tests should reject arrays that exceed maxItems"
-    (let [counts (run-generated-test #'test-get-featured-items)]
+    (let [counts (run-generated-test
+                  (generated-test-var 'test-get-featured-items-inputs))]
       (is (pos? (+ (:fail counts) (:error counts)))
           (str "Expected generated test to fail for oversized maxItems-constrained array response, got "
                counts)))))
