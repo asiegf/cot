@@ -11,6 +11,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
   statuses, and runtime placeholder values loaded from EDN or `#env`.
 
 ### Changed
+- Generated property specs are scoped by their owning component or response,
+  preventing unrelated schemas with common property names from overwriting
+  each other's validation rules.
+- Multiple `deftestgen` invocations can coexist in one namespace. Validation
+  var names identify independent generated-test groups, including distinct
+  test names and group-specific reload functions.
 - `deftestgen` now favors ordered validation vectors and accepts an optional
   runtime-input EDN path as its fourth argument.
 - Request inputs use `:params` and actual HTTP `:headers`; security values are

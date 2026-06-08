@@ -18,8 +18,8 @@
                 :properties {:id {:type "integer"}
                              :name {:type "string"}}}]
     (is (= '(clojure.spec.alpha/keys
-             :req-un [:cot.schema/id]
-             :opt-un [:cot.schema/name])
+             :req-un [:cot.schema.anonymous/id]
+             :opt-un [:cot.schema.anonymous/name])
            (gen/schema->spec schema)))))
 
 (deftest schema->spec-array-test
@@ -89,12 +89,12 @@
                           :enumNullRegression  {:enum ["none" nil]}}}}}}]
     (doseq [spec-form (gen/generate-all-specs openapi-spec)]
       (eval spec-form))
-    (is (true? (s/valid? :cot.schema/enumFalseRegression false)))
-    (is (true? (s/valid? :cot.schema/enumFalseRegression true)))
-    (is (false? (s/valid? :cot.schema/enumFalseRegression nil)))
-    (is (true? (s/valid? :cot.schema/enumNullRegression nil)))
-    (is (true? (s/valid? :cot.schema/enumNullRegression "none")))
-    (is (false? (s/valid? :cot.schema/enumNullRegression "other")))
+    (is (true? (s/valid? :cot.schema.EnumRegression/enumFalseRegression false)))
+    (is (true? (s/valid? :cot.schema.EnumRegression/enumFalseRegression true)))
+    (is (false? (s/valid? :cot.schema.EnumRegression/enumFalseRegression nil)))
+    (is (true? (s/valid? :cot.schema.EnumRegression/enumNullRegression nil)))
+    (is (true? (s/valid? :cot.schema.EnumRegression/enumNullRegression "none")))
+    (is (false? (s/valid? :cot.schema.EnumRegression/enumNullRegression "other")))
     (is (true? (s/valid? :cot.schema/EnumRegression
                          {:enumFalseRegression false
                           :enumNullRegression nil})))))
@@ -141,7 +141,7 @@
                                           {:schema {:type "object"
                                                     :required ["owner"]
                                                     :properties {:owner {:$ref "#/components/schemas/Item"}}}}}}}}]
-      (is (= '(clojure.spec.alpha/keys :req-un [:cot.schema/owner])
+      (is (= '(clojure.spec.alpha/keys :req-un [:cot.schema.anonymous/owner])
              (#'gen/response-spec nil op))))))
 
 (deftest schema->spec-ref-test
@@ -166,6 +166,29 @@
                 :properties {:address {:$ref "#/components/schemas/Address"}
                              :notes   {:type "string"}}}]
     (is (= '(clojure.spec.alpha/keys
-             :req-un [:cot.schema/address]
-             :opt-un [:cot.schema/notes])
+             :req-un [:cot.schema.anonymous/address]
+             :opt-un [:cot.schema.anonymous/notes])
            (gen/schema->spec schema)))))
+
+(deftest property-specs-are-scoped-by-owning-schema-test
+  (let [openapi-spec
+        {:components
+         {:schemas
+          {:Alert
+           {:type "object"
+            :required ["type"]
+            :properties {:type {:type "string"
+                                :enum ["alert"]}}}
+           :SearchResult
+           {:type "object"
+            :required ["type"]
+            :properties {:type {:$ref "#/components/schemas/SearchTypeEnum"}}}
+           :SearchTypeEnum
+           {:type "string"
+            :enum ["boundary" "conservation-area" "mill"]}}}}]
+    (doseq [spec-form (gen/generate-all-specs openapi-spec)]
+      (eval spec-form))
+    (is (true? (s/valid? :cot.schema/Alert {:type "alert"})))
+    (is (false? (s/valid? :cot.schema/Alert {:type "boundary"})))
+    (is (true? (s/valid? :cot.schema/SearchResult {:type "boundary"})))
+    (is (false? (s/valid? :cot.schema/SearchResult {:type "alert"})))))

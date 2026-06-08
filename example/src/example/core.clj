@@ -10,7 +10,7 @@
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.keyword-params :refer [wrap-keyword-params]]))
 
-(def items  [])
+(def items  [{:id 0, :name "numero-uno", :status "active"}])
 (def featured-items [{:id 0, :name "numero-uno"}])
 (def items' [{:id "0", :label "wrong..."}])
 (def expected-profile "USER")

@@ -17,6 +17,8 @@
   '[["/status" 200] ;; explicit expected status
     ;; ["/xyz" {} 200] ;; uncomment to demonstrate a test-level failure
     ["/status"]
+    ["/items"] ;; validates every returned item against components.schemas.Item
+    ["/featured-items"] ;; also validates the declared array bounds
     [:get "/items/{id}"
      {:params {:id ITEM_ID, :mode MODE}}
      401]

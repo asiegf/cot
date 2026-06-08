@@ -35,48 +35,60 @@
     (when (contains? schema :maxItems)
       [:max-count (:maxItems schema)]))))
 
+(defn- property-spec-keyword
+  [scope prop-name]
+  (keyword (str "cot.schema." scope) (name prop-name)))
+
+(defn- child-scope
+  [scope prop-name]
+  (str scope "." (name prop-name)))
+
 (defn schema->spec
   "Convert an OpenAPI schema to a spec form or registered-spec keyword.
    A `$ref` is returned as `:cot.schema/<SchemaName>`, which spec resolves
    through its registry at check time — so refs are handled the same way
    whether they appear in a component, a property, an array `items`, or
    an inline request/response schema."
-  [schema]
-  (cond
-    (:$ref schema) (ref->spec-kw (:$ref schema))
-    (:enum schema) (list `partial `contains? (set (:enum schema)))
-    :else
-    (case (:type schema)
-      "object"
-      (let [required (set (map keyword (:required schema)))
-            prop-keys (keys (:properties schema))
-            req-keys (filter required prop-keys)
-            opt-keys (remove required prop-keys)
-            ->spec-kw #(keyword "cot.schema" (name %))]
-        `(s/keys ~@(when (seq req-keys) [:req-un (mapv ->spec-kw req-keys)])
-                 ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
+  ([schema]
+   (schema->spec schema "anonymous"))
+  ([schema scope]
+   (cond
+     (:$ref schema) (ref->spec-kw (:$ref schema))
+     (:enum schema) (list `partial `contains? (set (:enum schema)))
+     :else
+     (case (:type schema)
+       "object"
+       (let [required (set (map keyword (:required schema)))
+             prop-keys (keys (:properties schema))
+             req-keys (filter required prop-keys)
+             opt-keys (remove required prop-keys)
+             ->spec-kw #(property-spec-keyword scope %)]
+         `(s/keys ~@(when (seq req-keys) [:req-un (mapv ->spec-kw req-keys)])
+                  ~@(when (seq opt-keys) [:opt-un (mapv ->spec-kw opt-keys)])))
 
-      "array"
-      `(s/coll-of ~(schema->spec (:items schema))
-                  ~@(array-count-opts schema))
+       "array"
+       `(s/coll-of ~(schema->spec (:items schema) (str scope ".item"))
+                   ~@(array-count-opts schema))
 
-      (openapi-type->predicate schema))))
+       (openapi-type->predicate schema)))))
 
 (defn- schema-prop-defs
   "Recursively collect `s/def` forms for every property of an object
    schema and every nested inline object/array schema. Skips `$ref`
    nodes — their targets are registered as component schemas."
-  [schema]
+  [schema scope]
   (cond
     (:$ref schema) nil
     (= "object" (:type schema))
     (concat
      (for [[prop-name prop-schema] (:properties schema)]
-       `(s/def ~(keyword "cot.schema" (name prop-name))
-          ~(schema->spec prop-schema)))
-     (mapcat schema-prop-defs (vals (:properties schema))))
+       `(s/def ~(property-spec-keyword scope prop-name)
+          ~(schema->spec prop-schema (child-scope scope prop-name))))
+     (mapcat (fn [[prop-name prop-schema]]
+               (schema-prop-defs prop-schema (child-scope scope prop-name)))
+             (:properties schema)))
     (= "array" (:type schema))
-    (schema-prop-defs (:items schema))
+    (schema-prop-defs (:items schema) (str scope ".item"))
     :else nil))
 
 (defn generate-spec-defs
@@ -85,20 +97,30 @@
    component itself."
   [schema-name schema]
   (concat
-   (schema-prop-defs schema)
+   (schema-prop-defs schema (name schema-name))
    [`(s/def ~(keyword "cot.schema" (name schema-name))
-       ~(schema->spec schema))]))
+       ~(schema->spec schema (name schema-name)))]))
+
+(defn- response-schema-scope
+  [method path status]
+  (str "response."
+       (name method) "."
+       (-> (str path)
+           (str/replace #"[^A-Za-z0-9]+" ".")
+           (str/replace #"^\.+|\.+$" ""))
+       "."
+       (name status)))
 
 (defn- json-response-schemas
-  "Return every application/json response schema across all operations."
+  "Return every application/json response schema with an operation-specific scope."
   [openapi-spec]
-  (for [[_ methods] (:paths openapi-spec)
+  (for [[path methods] (:paths openapi-spec)
         [method operation] methods
         :when (#{:get :post :put :patch :delete :head :options} method)
-        [_ response] (:responses operation)
+        [status response] (:responses operation)
         :let [schema (get-in response [:content :application/json :schema])]
         :when schema]
-    schema))
+    [(response-schema-scope method path status) schema]))
 
 (defn generate-all-specs
   "Generate spec definitions for every component schema and every inline
@@ -111,14 +133,16 @@
    registered specs rather than silently-ignored `:req-un` keywords."
   [openapi-spec]
   (let [schemas    (get-schemas openapi-spec)
-        op-schemas (json-response-schemas openapi-spec)]
+        scoped-op-schemas (json-response-schemas openapi-spec)]
     (concat
      (for [[schema-name _] schemas]
        `(s/def ~(keyword "cot.schema" (name schema-name)) any?))
      (mapcat (fn [[schema-name schema]]
                (generate-spec-defs schema-name schema))
              schemas)
-     (mapcat schema-prop-defs op-schemas))))
+     (mapcat (fn [[scope schema]]
+               (schema-prop-defs schema scope))
+             scoped-op-schemas))))
 
 ;; -----------------------------------------------------------------------------
 ;; Test generation helpers
@@ -167,11 +191,16 @@
                    (str/replace #"^-" "")))))
 
 (defn validation-case->test-name
-  [{:keys [method path expected-status case-index legacy?]}]
-  (if legacy?
-    (operation->test-name method path)
-    (symbol (str (operation->test-name method path)
-                 "-" expected-status "-case-" case-index))))
+  [{:keys [method path expected-status case-index legacy? test-group]}]
+  (let [base-name (if legacy?
+                    (operation->test-name method path)
+                    (symbol (str (operation->test-name method path)
+                                 "-" expected-status "-case-" case-index)))
+        test-name (if test-group
+                    (symbol (str base-name "-" test-group))
+                    base-name)]
+    (cond-> test-name
+      test-group (with-meta {::test-group test-group}))))
 
 (defn extract-params-by-location
   "Separate operation parameters by their 'in' field.
@@ -195,10 +224,12 @@
   ([_spec operation]
    (response-spec _spec operation 200))
   ([_spec operation status]
+   (response-spec _spec operation status "anonymous"))
+  ([_spec operation status scope]
    (when-let [schema (get-in operation
                              [:responses (status-key status)
                               :content :application/json :schema])]
-     (schema->spec schema))))
+     (schema->spec schema scope))))
 
 (defn- validate-input-map
   [input]
@@ -352,7 +383,9 @@
   (let [{:keys [method path input expected-status]} validation-case
         path-str   (keyword->path-str path)
         path-params (path-param-names path-str)
-        spec-form  (response-spec spec operation expected-status)
+        spec-form  (response-spec spec operation expected-status
+                                  (response-schema-scope method path
+                                                         (status-key expected-status)))
         input-sym   (gensym "input")
         params-sym  (gensym "params")
         headers-sym (gensym "headers")
@@ -393,11 +426,16 @@
                      (s/explain-str ~spec-form ~body-sym))))))))
 
 (defn clear-tests!
-  "Remove all deftest vars from the given namespace."
-  [ns]
+  "Remove generated deftest vars belonging to a validation group."
+  [ns test-group]
   (doseq [[sym v] (ns-interns ns)
-          :when (:test (meta v))]
+          :when (= test-group (::test-group (meta v)))]
     (ns-unmap ns sym)))
+
+(defn- test-group-name
+  [validations-sym]
+  (-> (name validations-sym)
+      (str/replace #"[^A-Za-z0-9_-]" "-")))
 
 (defmacro deftestgen
   "Generate clojure.test tests for ordered validation cases.
@@ -408,29 +446,34 @@
   ([handler-sym validations-sym spec-path]
    `(deftestgen ~handler-sym ~validations-sym ~spec-path nil))
   ([handler-sym validations-sym spec-path runtime-input-path]
-   (let [target-ns (ns-name *ns*)]
+   (let [target-ns   (ns-name *ns*)
+         test-group  (test-group-name validations-sym)
+         reload-name (symbol (str "reload-" test-group "-tests!"))]
      `(do
-        (defn ~'reload-tests! []
-          (clear-tests! (find-ns '~target-ns))
-          (let [spec# (parser/parse-file ~spec-path)
-                validations# (normalize-validations ~validations-sym)
-                runtime-input-path# ~runtime-input-path
-                operations# (into {}
-                                  (map (fn [{:keys [~'path ~'method ~'operation]}]
-                                         [[~'method (keyword->path-str ~'path)]
-                                          ~'operation]))
-                                  (parser/get-operations spec#))]
-            (doseq [spec-form# (generate-all-specs spec#)]
-              (eval spec-form#))
-            (doseq [{:keys [~'method ~'path ~'expected-status]
-                     :as validation-case#} validations#]
-              (try
-                (let [operation# (validate-validation-operation
-                                  (get operations# [~'method ~'path])
-                                  validation-case#)]
-                  (eval (generate-test-form spec# '~handler-sym validation-case#
-                                            operation# runtime-input-path#)))
-                (catch clojure.lang.ExceptionInfo error#
-                  (eval (generate-invalid-validation-test-form
-                         validation-case# error#)))))))
-        (~'reload-tests!)))))
+        (defn ~reload-name []
+          (binding [*ns* (find-ns '~target-ns)]
+            (clear-tests! *ns* ~test-group)
+            (let [spec# (parser/parse-file ~spec-path)
+                  validations# (mapv #(assoc % :test-group ~test-group)
+                                     (normalize-validations ~validations-sym))
+                  runtime-input-path# ~runtime-input-path
+                  operations# (into {}
+                                    (map (fn [{:keys [~'path ~'method ~'operation]}]
+                                           [[~'method (keyword->path-str ~'path)]
+                                            ~'operation]))
+                                    (parser/get-operations spec#))]
+              (doseq [spec-form# (generate-all-specs spec#)]
+                (eval spec-form#))
+              (doseq [{:keys [~'method ~'path ~'expected-status]
+                       :as validation-case#} validations#]
+                (try
+                  (let [operation# (validate-validation-operation
+                                    (get operations# [~'method ~'path])
+                                    validation-case#)]
+                    (eval (generate-test-form spec# '~handler-sym validation-case#
+                                              operation# runtime-input-path#)))
+                  (catch clojure.lang.ExceptionInfo error#
+                    (eval (generate-invalid-validation-test-form
+                           validation-case# error#))))))))
+        (def ~'reload-tests! ~reload-name)
+        (~reload-name)))))
