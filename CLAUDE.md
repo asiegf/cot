@@ -7,6 +7,8 @@ This file provides instructions and context for AI coding agents working on this
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
 
+Before starting work, read and follow the standing project rules in `ai/AGENT_RULES.md`. Keep `ai/map.md` current with open bead state.
+
 ### Quick Reference
 
 ```bash
