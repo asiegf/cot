@@ -1,11 +1,10 @@
 (ns cot.generator
-  (:require [cot.parser :as parser :refer [get-schemas]]
+  (:require [cot.inputs :as inputs]
+            [cot.parser :as parser :refer [get-schemas]]
             [clojure.data.json :as json]
-            [clojure.edn :as edn]
             [clojure.spec.alpha :as s]
             [clojure.string :as str]
             [clojure.test :as t]
-            [clojure.walk :as walk]
             [ring.mock.request :as mock]))
 
 (defn openapi-type->predicate
@@ -307,37 +306,14 @@
     (throw (ex-info "Validations must be an ordered sequence or legacy map"
                     {:validations validations}))))
 
-(defn read-runtime-inputs
-  "Read runtime placeholder values from EDN. #env resolves environment variables."
-  [path]
-  (if path
-    (let [runtime-inputs
-          (edn/read-string
-           {:readers {'env (fn [name]
-                             (or (System/getenv (str name))
-                                 (throw
-                                  (ex-info "Required environment variable is missing"
-                                           {:environment-variable (str name)}))))}}
-           (slurp path))]
-      (when-not (map? runtime-inputs)
-        (throw (ex-info "Runtime input EDN must contain a map"
-                        {:path path
-                         :runtime-inputs runtime-inputs})))
-      runtime-inputs)
-    {}))
+;; Moved to cot.inputs; kept here for existing callers and generated test forms.
+(def ^{:arglists '([path])
+       :doc "Alias of `cot.inputs/read-runtime-inputs`."}
+  read-runtime-inputs inputs/read-runtime-inputs)
 
-(defn resolve-runtime-values
-  "Recursively replace symbol placeholders with values from runtime inputs."
-  [value runtime-inputs]
-  (walk/postwalk
-   (fn [item]
-     (if (symbol? item)
-       (if (contains? runtime-inputs item)
-         (get runtime-inputs item)
-         (throw (ex-info "Runtime input placeholder is missing"
-                         {:placeholder item})))
-       item))
-   value))
+(def ^{:arglists '([value runtime-inputs])
+       :doc "Alias of `cot.inputs/resolve-runtime-values`."}
+  resolve-runtime-values inputs/resolve-runtime-values)
 
 (defn validate-validation-operation
   "Return an OpenAPI operation after validating a normalized case against it."

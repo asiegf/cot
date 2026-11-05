@@ -121,6 +121,58 @@ profile is rejected.
 - Array `minItems` and `maxItems` bounds are enforced when present.
 - Schema properties with `enum` constraints are validated against their allowed values.
 
+**Sweep (spec-driven)**
+
+`cot.sweep` runs *every* operation of a spec instead of a hand-written list.
+Inputs are derived from the spec (overrides, then ids discovered at runtime,
+then `example` / `default` / first `enum`); responses are checked for a
+documented status, a documented content-type, and a body valid against the
+JSON Schema of the media type matching the response's `Content-Type`
+(networknt validator, OpenAPI 3.0 or 3.1 dialect from the `openapi` field).
+Coverage fails on any in-scope operation neither exercised nor skipped with a
+reason. Design and phases: `plans/sweep-engine.md`.
+
+```clojure
+(ns my.api-sweep-test
+  (:require [cot.sweep :as cot :refer [defsweep]]
+            [my.api :refer [app]]))
+
+(def config
+  {:spec       "openapi.yaml"                 ; classpath resource or file path
+   :app        #'app
+   :inputs     "test/inputs.edn"              ; placeholders, #env
+   :scope      (cot/under "/items" "/places") ; default: every path
+   :auth       {"Authorization" 'AUTHORIZATION}
+   :params     {:limit 10}
+   :op-params  {[:get "/items/{id}"] {:id 'ITEM_ID}}
+   :resolvers  {"/places/{id}" {:from [:get "/places"] :extract "/0/id"}}
+   :bodies     {[:post "/uploads"] {"file" {:file "test/sample.csv"
+                                            :content-type "text/csv"}}}
+   :transport  {[:get "/exports/items.csv"] :served}
+   :scenarios  [lifecycle]                    ; fns of ctx calling cot/exercise!
+   :scenario-ops #{[:delete "/items/{id}"]}   ; left to scenarios, not swept
+   :skip       {[:get "/legends"] "calls a third-party service"}
+   :generators #{:happy :auth}})
+
+(defsweep api-sweep config)
+```
+
+- `defsweep` defines one `deftest` with a `testing` block per step (`sweep`,
+  then scenarios, `auth`, `coverage`). The config is evaluated when the test
+  runs, so no reload function is needed.
+- `cot/run`, `cot/exercise!`, `cot/check-response`, `cot/check-coverage`,
+  `cot/auth-sweep!` are public for projects composing tests differently.
+- Request bodies take their media type from `requestBody.content` (JSON ones
+  first). A `multipart/form-data` body is a map of parts: strings, `File`s,
+  byte arrays, `{:file path}` or `{:value bytes :filename .. :content-type ..}`.
+  Scenarios can pass `:multipart parts` to `exercise!`.
+- Transports: `:ring` (in-process, default) and `:served` (throwaway http-kit
+  server, for async-channel routes). `:served` needs `http-kit/http-kit` on
+  the test classpath.
+- A 404 with an empty or non-JSON body is reported as "route missing"
+  (override with `:route-missing?`).
+- `deftestgen` is unchanged; both can live side by side (see `example/`).
+
 **Testing (Consumer Project)**
 
 Add a minimal `:test` alias to your `deps.edn`:

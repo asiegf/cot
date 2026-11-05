@@ -14,6 +14,11 @@ Turn an OpenAPI spec into runnable, maintainable `clojure.test` checks that vali
 - Resolve runtime input placeholders from EDN literals or environment variables.
 - Support the legacy operation-to-input map form for compatibility.
 - Reload tests from the REPL via `reload-tests!`.
+- Sweep every operation of a spec (`cot.sweep`): derived inputs, runtime id
+  discovery, JSON Schema validation per response media type, JSON and multipart
+  request bodies, in-process and served transports, coverage of operations.
+  Next phases (status-level coverage, auth matrix, negative cases) are in
+  `plans/sweep-engine.md`.
 
 **Expected In The Near Term**
 - Support more response content types.

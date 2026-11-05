@@ -83,12 +83,20 @@ paths:
       operationId: getItemById
       tags:
         - items
+      security:
+        - tokenAuth: []
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: integer
+        - name: mode
+          in: query
+          required: false
+          schema:
+            type: string
+            example: def
       responses:
         '200':
           description: Successful response
@@ -98,6 +106,100 @@ paths:
                 $ref: '#/components/schemas/Item'
         '401':
           description: Missing token header
+  /places:
+    get:
+      summary: List places
+      operationId: getPlaces
+      tags:
+        - places
+      responses:
+        '200':
+          description: All places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Place'
+  /places/{id}:
+    get:
+      summary: Get a place
+      description: >-
+        A place, documented both as plain JSON and as a GeoJSON feature. The server
+        answers with GeoJSON; the response is validated against the schema of the media
+        type it was sent with.
+      operationId: getPlace
+      tags:
+        - places
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The place
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/PlaceFeature'
+        '404':
+          description: Unknown place
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /uploads:
+    post:
+      summary: Upload a file
+      operationId: postUpload
+      tags:
+        - uploads
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                comment:
+                  type: string
+      responses:
+        '201':
+          description: Stored upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Upload'
+        '400':
+          description: No file part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /exports/items.csv:
+    get:
+      summary: Export items as CSV
+      description: Streamed over an async channel (http-kit); needs a real server.
+      operationId: exportItems
+      tags:
+        - items
+      responses:
+        '200':
+          description: CSV export
+          content:
+            text/csv:
+              schema:
+                type: string
 components:
   securitySchemes:
     bearerAuth:
@@ -107,6 +209,10 @@ components:
       type: apiKey
       in: header
       name: profile
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: token
   schemas:
     Item:
       type: object
@@ -126,4 +232,59 @@ components:
         ok:
           type: boolean
         message:
+          type: string
+    Place:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    PlaceFeature:
+      type: object
+      required:
+        - type
+        - geometry
+        - properties
+      properties:
+        type:
+          const: Feature
+        geometry:
+          type: object
+          required:
+            - type
+            - coordinates
+          properties:
+            type:
+              type: string
+            coordinates:
+              type: array
+              items:
+                type: number
+        properties:
+          $ref: '#/components/schemas/Place'
+    Upload:
+      type: object
+      required:
+        - name
+        - size
+        - contentType
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+        comment:
+          type: string
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
           type: string

@@ -1,0 +1,157 @@
+openapi: 3.1.0
+info:
+  title: Sweep self-test API
+  version: 1.0.0
+security:
+  - apiKey: []
+paths:
+  /things:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, example: 10}
+      responses:
+        '200':
+          description: All things
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Thing'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /things/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: integer}
+    get:
+      responses:
+        '200':
+          description: One thing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Thing'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /places/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, example: p1}
+      responses:
+        '200':
+          description: A place, as JSON or as a GeoJSON feature
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Place'}
+            application/geo+json:
+              schema: {$ref: '#/components/schemas/Feature'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /uploads:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                comment: {type: string}
+      responses:
+        '201':
+          description: Stored upload
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Upload'}
+  /exports/things.csv:
+    get:
+      responses:
+        '200':
+          description: Streamed CSV
+          content:
+            text/csv:
+              schema: {type: string}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /secure:
+    get:
+      security:
+        - apiKey: []
+          profile: []
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Profile'}
+        '401':
+          description: Missing or invalid credentials
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+components:
+  securitySchemes:
+    apiKey: {type: apiKey, in: header, name: x-api-key}
+    profile: {type: apiKey, in: header, name: x-profile}
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: Unknown thing
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Thing:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+    Place:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+    Feature:
+      type: object
+      required: [type, geometry, properties]
+      properties:
+        type: {const: Feature}
+        geometry:
+          type: object
+          required: [type, coordinates]
+        properties: {type: object}
+    Upload:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name: {type: string}
+        size: {type: integer}
+        contentType: {type: string}
+        comment: {type: string}
+    Profile:
+      type: object
+      required: [profile]
+      properties:
+        profile: {type: string}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}

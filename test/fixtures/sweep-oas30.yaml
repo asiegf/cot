@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: OpenAPI 3.0 nullable self-test
+  version: 1.0.0
+paths:
+  /loose:
+    get:
+      responses:
+        '200':
+          description: v may be null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Loose'}
+  /strict:
+    get:
+      responses:
+        '200':
+          description: v may not be null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Strict'}
+components:
+  schemas:
+    Loose:
+      type: object
+      required: [v]
+      properties:
+        v:
+          anyOf:
+            - type: string
+            - type: number
+            - type: boolean
+          nullable: true
+    Strict:
+      type: object
+      required: [v]
+      properties:
+        v:
+          anyOf:
+            - type: string
+            - type: number
+            - type: boolean

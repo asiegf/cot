@@ -56,6 +56,61 @@
      :method method
      :operation operation}))
 
+(defn follow-ref
+  "`value` with its top-level `$ref` chain followed (nested refs left as they are, so
+   recursive schemas are safe)."
+  [spec value]
+  (loop [v value, seen #{}]
+    (if-let [ref (and (map? v) (:$ref v))]
+      (if (contains? seen ref)
+        (throw (ex-info (str "circular $ref " ref) {:ref ref}))
+        (recur (resolve-ref spec ref) (conj seen ref)))
+      v)))
+
+(defn kname
+  "Original string of a key produced by clj-yaml (:/a/{id}, :200, :application/json)."
+  [k]
+  (if (keyword? k) (subs (str k) 1) (str k)))
+
+(def http-methods #{:get :post :put :patch :delete :head :options})
+
+(defn operation-parameters
+  "Path-level and operation-level parameters of an operation, the parameter and its
+   schema dereferenced.
+   An operation-level parameter overrides the path-level one with the same name and
+   location."
+  [spec path-item operation]
+  (->> (concat (:parameters path-item) (:parameters operation))
+       (map (fn [p] (let [p (follow-ref spec p)]
+                      (cond-> p (:schema p) (update :schema (partial follow-ref spec))))))
+       (reduce (fn [m p] (assoc m [(:name p) (:in p)] p)) {})
+       vals))
+
+(defn security-requirements
+  "Effective security requirements of an operation: its own `security`, else the
+   document-level one. A seq of alternatives (OR), each a map scheme-key -> scopes (AND).
+   `[]` means explicitly unsecured."
+  [spec operation]
+  (if (contains? operation :security)
+    (:security operation)
+    (:security spec)))
+
+(defn operations
+  "Every `{:method :path :path-kw :operation :params}` of the spec whose path satisfies
+   `scope` (a predicate on the path string)."
+  ([spec] (operations spec (constantly true)))
+  ([spec scope]
+   (for [[path-kw item] (:paths spec)
+         :let  [path (kname path-kw)]
+         :when (scope path)
+         [method op] item
+         :when (http-methods method)]
+     {:method    method
+      :path      path
+      :path-kw   path-kw
+      :operation op
+      :params    (operation-parameters spec item op)})))
+
 (defn get-schemas
   "Extract component schemas from the spec."
   [spec]

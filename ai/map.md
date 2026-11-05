@@ -1,8 +1,16 @@
 # Beads Work Map
 
-Last updated: 2026-06-08
+Last updated: 2026-11-05
 
 ## Open Beads
+
+- P1 sweep engine (`cot-svt`, epic; spec `plans/sweep-engine.md`), sequential chain:
+  - `cot-svt.1` — Phase 1: port the prototype engine, media-type fix, multipart, ring+served transports. Closed on `cot-svt.1-sweep-phase1` (not merged); prototype parity checked.
+  - `cot-svt.2` — Phase 2: status-level coverage + `coverage.edn`. Ready once `.1` is merged (same hot zone `src/cot/sweep.clj`).
+  - `cot-svt.3` — Phase 3: request self-validation + auth matrix from `securitySchemes`. Blocked by `.2`. Carries recorded requirements (missing/invalid/foreign, 400 for missing creds, `security: []`, typed path values, `:principals` for scenarios).
+  - `cot-svt.4` — Phase 4: negative generators. Blocked by `.3`.
+  - `cot-svt.5` — Phase 5: `deftestgen` on the engine. Blocked by `.4`; depends on plan §8 Q1.
+  - `cot-svt.6` — Phase 6: remote transport, reverse drift, CLI. Blocked by `.1`.
 
 - P1 schema isolation:
   - `cot-na6` — Scope generated property specs by schema. Closed locally.
@@ -78,6 +86,7 @@ Last updated: 2026-06-08
 
 ## Hot Zones
 
+- `src/cot/sweep.clj` (and `cot.request`) is the sweep hot zone: phases 1-4 run sequentially.
 - `src/cot/generator.clj` is the main hot zone. Beads touching generator implementation/docstring should run sequentially or in tightly coordinated batches.
 - E2E test helper files under `test/cot/deftestgen_*_e2e_test.clj` are isolated from docs and may run in parallel with documentation work.
 - Documentation files (`readme.md`, `roadmap.md`, `CHANGELOG.md`) may be handled together by one worker to avoid overlapping prose edits.

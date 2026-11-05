@@ -1,10 +1,14 @@
 {:paths ["src"]
  :deps {clj-commons/clj-yaml {:mvn/version "1.0.27"}
         org.clojure/data.json {:mvn/version "2.5.1"}
-        ring/ring-mock {:mvn/version "0.4.0"}}
+        ring/ring-mock {:mvn/version "0.6.2"}
+        ;; JSON-Schema validation of responses (OpenAPI 3.0 and 3.1 dialects)
+        com.networknt/json-schema-validator {:mvn/version "2.0.0"}}
  :aliases
  {:test {:extra-paths ["test"]
-         :extra-deps {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1"
+         ;; http-kit is optional for users (served transport), needed by the self-tests
+         :extra-deps {http-kit/http-kit {:mvn/version "2.8.1"}
+                      io.github.cognitect-labs/test-runner {:git/tag "v0.5.1"
                                                             :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test
