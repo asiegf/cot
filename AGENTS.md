@@ -2,7 +2,7 @@
 
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
-Before starting work, read and follow the standing project rules in `ai/AGENT_RULES.md`. Keep `ai/map.md` current with open bead state.
+Before starting work, read and follow the standing project rules in `ai/AGENT_RULES.md`.
 
 > **Architecture in one line:** Issues live in a local Dolt database
 > (`.beads/dolt/`); cross-machine sync uses `bd dolt push/pull` (a

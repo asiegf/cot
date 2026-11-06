@@ -10,8 +10,6 @@ These rules apply to every AI session in this repository, including the mayor/or
 ## Beads Operating Rules
 
 - Use `bd` as the durable source of truth for project work.
-- Maintain `ai/map.md`, summarising and categorising every open bead.
-- Update `ai/map.md` on every signal: bead filed, bead dispatched, PR merged, or decision made.
 - Action any open bead where direction is already set and no operator input is required by dispatching it to a background agent on its own branch.
 - After every PR merge, run `git pull --ff-only` so the local main branch stays current.
 - When dispatching multiple beads at once, sequence them to minimise merge conflicts:
@@ -25,4 +23,10 @@ These rules apply to every AI session in this repository, including the mayor/or
 
 ## Session Heartbeat
 
-- Long-running mayor sessions MUST re-read `ai/AGENT_RULES.md` and `ai/map.md` every hour to prevent drift.
+- Long-running mayor sessions MUST re-read `ai/AGENT_RULES.md` and `bd list --status=open` every hour to prevent drift.
+
+## Hot Zones
+
+- `src/cot/sweep.clj` and `src/cot/request.clj` (sweep engine): sweep phases run sequentially.
+- `src/cot/generator.clj`: beads touching it run sequentially.
+- Documentation files (`readme.md`, `roadmap.md`, `CHANGELOG.md`) are handled together by one worker.
