@@ -5,3 +5,6 @@
 .beads-credential-key
 
 /.agents/
+
+# Local notes, not versioned
+/local

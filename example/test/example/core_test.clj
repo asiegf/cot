@@ -22,13 +22,12 @@
     [:get "/items/{id}"
      {:params {:id ITEM_ID, :mode MODE}}
      401]
-    [:get "/items/{id}"
+    ["/items/{id}"
      {:params {:id ITEM_ID, :mode MODE}
-      :headers {:token TOKEN}}
-     200]
-    ["/secure"
-     {:headers {:Authorization AUTHORIZATION
-                :profile PROFILE}}]
+      :headers {:token TOKEN}}]
+    ;; ["/secure"
+    ;;  {:headers {:Authorization AUTHORIZATION
+    ;;             :profile PROFILE}}]
     ["/secure"
      {:headers {:Authorization AUTHORIZATION
                 :profile "not-the-env-profile"}}

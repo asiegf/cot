@@ -292,12 +292,16 @@
     (doseq [op (:ops ctx)
             :when (seq (parser/security-requirements doc (:operation op)))
             :let [k (request/op-key op)
-                  ;; typed path values reach the auth middleware, not a router 404
-                  path-params (into {} (for [p (:params op) :when (= "path" (:in p))]
-                                         [(:name p) (if (#{"integer" "number"}
-                                                         (get-in p [:schema :type]))
-                                                      0
-                                                      "contract-sweep")]))
+                  ;; typed path values reach the auth middleware, not a router 404; the
+                  ;; documented example first, as routes may constrain string ids
+                  path-params (into {} (for [{:keys [schema] :as p} (:params op)
+                                             :when (= "path" (:in p))]
+                                         [(:name p)
+                                          (cond
+                                            (some? (:example p))      (:example p)
+                                            (some? (:example schema)) (:example schema)
+                                            (#{"integer" "number"} (:type schema)) 0
+                                            :else "contract-sweep")]))
                   query (into {} (for [p (:params op)
                                        :when (= "query" (:in p))
                                        :let [v (get (:params ctx) (keyword (:name p)))]
