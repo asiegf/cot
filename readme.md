@@ -6,19 +6,25 @@ COT is a Clojure library that generates `clojure.test` checks and `clojure.spec`
 
 **Install**
 
+As a git dependency (versions are tagged `YYYY.MINOR.PATCH`, see `CHANGELOG.md`):
+
+```clojure
+{:deps {io.github.asiegf/cot {:git/tag "2026.1.0" :git/sha "@SHA@"}}}
+```
+
 If you are developing locally:
 
 ```clojure
-{:deps {asiegf/cot {:local/root "/absolute/path/to/cot"}}}
+{:deps {io.github.asiegf/cot {:local/root "/absolute/path/to/cot"}}}
 ```
 
-If you are consuming from a Git repo:
-
-```clojure
-{:deps {asiegf/cot {:git/url "https://github.com/asiegf/cot" :git/sha "e046164514bed2e5dde34c34911ecc2a5479ab46"}}}
-```
-
-When published, replace the dependency with the Maven coordinates and version.
+`cot.sweep` validates with `com.networknt/json-schema-validator`, which depends on
+Jackson. If your project pins another Jackson version (through cheshire, jsonista,
+...), check the resolved one with `clj -X:deps tree` and, on a conflict, pin
+`com.fasterxml.jackson.core/jackson-databind` explicitly. The validator logs through
+SLF4J: without a provider on the classpath, SLF4J prints a one-time "No SLF4J
+providers were found" warning, harmless; add a provider (e.g.
+`org.slf4j/slf4j-nop`) to silence it.
 
 **Usage**
 
@@ -149,10 +155,11 @@ reason. Design and phases: `plans/sweep-engine.md`.
    :bodies     {[:post "/uploads"] {"file" {:file "test/sample.csv"
                                             :content-type "text/csv"}}}
    :transport  {[:get "/exports/items.csv"] :served}
+   :query-style :openapi                      ; or :json, see below
    :scenarios  [lifecycle]                    ; fns of ctx calling cot/exercise!
    :scenario-ops #{[:delete "/items/{id}"]}   ; left to scenarios, not swept
    :skip       {[:get "/legends"] "calls a third-party service"}
-   :generators #{:happy :auth}})
+   :generators #{:happy}})                    ; :auth is experimental
 
 (defsweep api-sweep config)
 ```
@@ -166,6 +173,17 @@ reason. Design and phases: `plans/sweep-engine.md`.
   first). A `multipart/form-data` body is a map of parts: strings, `File`s,
   byte arrays, `{:file path}` or `{:value bytes :filename .. :content-type ..}`.
   Scenarios can pass `:multipart parts` to `exercise!`.
+- Query parameters follow their `style` / `explode` (OpenAPI defaults: `form`,
+  exploded, so `?ids=a&ids=b`, `?x=1&y=2` for an object); `spaceDelimited`,
+  `pipeDelimited`, `deepObject` and `explode: false` are supported, and a parameter
+  declared with `content: application/json` is sent as JSON. `:query-style :json`
+  sends every array or object value as JSON text instead (`?ids=["a","b"]`), for APIs
+  that parse their query that way without declaring it.
+- The auth sweep (`:generators #{:happy :auth}`, `auth-sweep!`) is
+  **experimental** and will be replaced by a matrix derived from `securitySchemes`
+  (plan phase 3). It checks that each secured operation rejects a request without
+  credentials with a documented 400/401/403; with `:profile-header` set, operations
+  secured by an apiKey in that header must also reject a foreign value of it.
 - Transports: `:ring` (in-process, default) and `:served` (throwaway http-kit
   server, for async-channel routes). `:served` needs `http-kit/http-kit` on
   the test classpath.

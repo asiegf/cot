@@ -25,8 +25,13 @@
                    [method path] -> one of those
    :route-missing? predicate on a response (default: 404 with an empty or non-JSON
                    body), reported as route drift
-   :generators     #{:happy :auth} subset run by `run` (default #{:happy})
-   :profile-header header of the auth sweep's foreign-profile case (default \"profile\")"
+   :query-style    :openapi (default: each parameter's `style` / `explode`) or :json
+                   (array and object query values sent as JSON text), see
+                   `cot.request/query-styles`
+   :generators     #{:happy :auth} subset run by `run` (default #{:happy}); :auth is
+                   EXPERIMENTAL, see `auth-sweep!`
+   :profile-header header of the auth sweep's foreign-profile case; that case only
+                   runs when it is set"
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.test :as t :refer [is testing]]
@@ -85,6 +90,9 @@
            scenario-ops transport route-missing?]
     :or   {scope (constantly true)}
     :as   config}]
+  (when-not (contains? request/query-styles (:query-style config :openapi))
+    (throw (ex-info (str "unknown :query-style " (pr-str (:query-style config)))
+                    {:allowed request/query-styles})))
   (let [spec    (schema/load-spec spec)
         inputs  (inputs/load-inputs inputs)
         resolve #(inputs/resolve-runtime-values % inputs)]
@@ -270,7 +278,8 @@
         (str "skip/scenario entries not in scope: " (mapv op-label stale-skip)))))
 
 ;; -----------------------------------------------------------------------------
-;; Auth sweep (phase 1 port; replaced by the securitySchemes matrix in phase 3)
+;; Auth sweep (EXPERIMENTAL: phase 1 port, replaced by the securitySchemes matrix in
+;; phase 3)
 
 (defn- secured-by-header?
   "True when the security requirements of `op` include an apiKey scheme sent in
@@ -284,9 +293,14 @@
           (parser/security-requirements doc (:operation op)))))
 
 (defn auth-sweep!
-  "Every secured operation must reject a missing credential and, when it is secured by
-  the profile header, a foreign profile, with a documented 400/401/403. Middleware
-  rejects these before any handler runs, so this is safe for mutations too."
+  "EXPERIMENTAL, will change: phase 3 replaces it with a matrix derived from
+  `securitySchemes` (plans/sweep-engine.md).
+
+  Every secured operation must reject a missing credential with a documented
+  400/401/403. With `:profile-header` set, operations secured by an apiKey scheme sent
+  in that header must also reject a foreign value of it (the other `:auth` headers
+  kept). Assumes the app rejects these before any handler runs, so mutations are
+  sent too."
   [ctx]
   (let [doc (:doc (:spec ctx))]
     (doseq [op (:ops ctx)
@@ -309,11 +323,12 @@
                                    [(:name p) v]))
                   documented (set (keys (documented-responses (:spec ctx) op)))
                   allowed    (set (filter #{400 401 403} documented))
-                  profile-header (:profile-header ctx "profile")]]
+                  profile-header (:profile-header ctx)]]
       (testing (op-label k)
         (is (seq allowed) (str (op-label k) ": no 400/401/403 documented"))
         (doseq [[case headers] (cond-> {"no credentials" {}}
-                                 (secured-by-header? (:spec ctx) op profile-header)
+                                 (and profile-header
+                                      (secured-by-header? (:spec ctx) op profile-header))
                                  (assoc "foreign profile"
                                         (assoc (:auth ctx) profile-header
                                                "cot-unknown-profile")))]
@@ -321,6 +336,7 @@
             (check-response ctx op
                             (send! ctx k (build-request op {:path-params path-params
                                                             :query       query
+                                                            :query-style (:query-style ctx)
                                                             :headers     headers}))
                             allowed)))))))
 

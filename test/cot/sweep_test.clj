@@ -350,3 +350,73 @@
     (is (= #{"sweep" "auth" "coverage"}
            (set (keep (comp last :contexts) reports)))
         "one testing block per step")))
+
+;; -----------------------------------------------------------------------------
+;; Query serialization (OpenAPI style / explode)
+
+(def ^:private query-op
+  {:method :get, :path "/q"
+   :params [{:name "ids"    :in "query" :schema {:type "array"}}
+            {:name "csv"    :in "query" :schema {:type "array"} :explode false}
+            {:name "pipes"  :in "query" :schema {:type "array"} :style "pipeDelimited" :explode false}
+            {:name "spaces" :in "query" :schema {:type "array"} :style "spaceDelimited" :explode false}
+            {:name "point"  :in "query" :schema {:type "object"}}
+            {:name "box"    :in "query" :schema {:type "object"} :explode false}
+            {:name "filter" :in "query" :schema {:type "object"} :style "deepObject"}
+            {:name "extent" :in "query" :content {:application/json {:schema {:type "object"}}}}]})
+
+(defn- query-params
+  "Query params of the request built for `query`, as a Ring app would read them."
+  ([query] (query-params query nil))
+  ([query query-style]
+   (:query-params (ring.middleware.params/params-request
+                   (request/build-request query-op {:query query :query-style query-style})))))
+
+(deftest query-serialization-test
+  (testing "form, explode (the OpenAPI default): repeated keys"
+    (is (= {"ids" ["a" "b"]} (query-params {"ids" ["a" "b"]})))
+    (is (= {"ids" "a"} (query-params {"ids" ["a"]}))))
+  (testing "explode false: delimited"
+    (is (= {"csv" "a,b"} (query-params {"csv" ["a" "b"]})))
+    (is (= {"pipes" "a|b"} (query-params {"pipes" ["a" "b"]})))
+    (is (= {"spaces" "a b"} (query-params {"spaces" ["a" "b"]}))))
+  (testing "objects"
+    (is (= {"x" "1", "y" "2"} (query-params {"point" {:x 1, :y 2}})) "form, explode")
+    (is (= {"box" "x,1,y,2"} (query-params {"box" {:x 1, :y 2}})) "form, no explode")
+    (is (= {"filter[x]" "1", "filter[y]" "2"} (query-params {"filter" {:x 1, :y 2}}))
+        "deepObject"))
+  (testing "content: application/json is sent as JSON whatever the query style"
+    (is (= {"extent" "{\"xmin\":1}"} (query-params {"extent" {:xmin 1}}))))
+  (testing "undeclared params: OpenAPI default"
+    (is (= {"other" ["a" "b"]} (query-params {:other ["a" "b"]}))))
+  (testing "scalars and encoding"
+    (is (= {"ids" "a b&c", "csv" "1"} (query-params {"ids" "a b&c", :csv 1}))))
+  (testing ":json query style sends arrays and objects as JSON text"
+    (is (= {"ids" "[\"a\",\"b\"]", "point" "{\"x\":1}", "csv" "plain"}
+           (query-params {"ids" ["a" "b"], "point" {:x 1}, "csv" "plain"} :json))))
+  (testing "an unknown query style fails"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"unknown :query-style"
+                          (query-params {"ids" ["a"]} :xml)))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"unknown :query-style"
+                          (sweep/make-context (assoc config :query-style :xml))))))
+
+(deftest query-style-reaches-derived-requests-test
+  (let [ctx (sweep/make-context (assoc config :query-style :json))
+        op  (request/find-op (:ops ctx) [:get "/things"])]
+    (is (= :json (:query-style (request/derive-request ctx op))))
+    (is (= :openapi (:query-style (request/derive-request (sweep/make-context config) op))))))
+
+;; -----------------------------------------------------------------------------
+;; Auth sweep (experimental)
+
+(defn- auth-cases [config]
+  (->> (capture #(sweep/auth-sweep! (sweep/make-context config)))
+       (mapcat :contexts)
+       (filter #{"no credentials" "foreign profile"})
+       set))
+
+(deftest foreign-profile-case-is-opt-in-test
+  (is (contains? (auth-cases config) "foreign profile")
+      "runs with :profile-header")
+  (is (= #{"no credentials"} (auth-cases (dissoc config :profile-header)))
+      "only the missing-credential case without it"))

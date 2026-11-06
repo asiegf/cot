@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and the project follows Semantic Versioning.
 
 ## Unreleased
+
+## 2026.1.0 - 2026-11-06
+
+First tagged release. Coordinates: `io.github.asiegf/cot` (git dependency).
+
 ### Added
+- Query parameters are serialized per their OpenAPI `style` / `explode` (`form`,
+  `spaceDelimited`, `pipeDelimited`, `deepObject`); `content: application/json`
+  parameters are sent as JSON. `:query-style :json` keeps the previous behaviour
+  (arrays and objects as JSON text).
 - `cot.sweep`: spec-driven sweep of every in-scope operation (phase 1 of
   `plans/sweep-engine.md`), with `cot.schema`, `cot.inputs`, `cot.request`,
   `cot.discovery` and `cot.transport`. `defsweep` defines one `deftest` per
@@ -24,6 +33,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
   statuses, and runtime placeholder values loaded from EDN or `#env`.
 
 ### Changed
+- The sweep sends array and object query values the OpenAPI way by default
+  (`?ids=a&ids=b`), no longer as JSON text; set `:query-style :json` for the old
+  behaviour.
+- The auth sweep is marked experimental, and its foreign-profile case only runs when
+  `:profile-header` is set (it defaulted to `"profile"`).
 - `ring/ring-mock` 0.4.0 -> 0.6.2 (multipart); new dependency
   `com.networknt/json-schema-validator` 2.0.0.
 - `read-runtime-inputs` and `resolve-runtime-values` moved to `cot.inputs`;

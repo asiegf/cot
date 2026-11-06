@@ -16,7 +16,8 @@ Turn an OpenAPI spec into runnable, maintainable `clojure.test` checks that vali
 - Reload tests from the REPL via `reload-tests!`.
 - Sweep every operation of a spec (`cot.sweep`): derived inputs, runtime id
   discovery, JSON Schema validation per response media type, JSON and multipart
-  request bodies, in-process and served transports, coverage of operations.
+  request bodies, query parameters serialized per `style` / `explode`, in-process
+  and served transports, coverage of operations. The auth sweep is experimental.
   Next phases (status-level coverage, auth matrix, negative cases) are in
   `plans/sweep-engine.md`.
 

@@ -16,7 +16,7 @@
             [cot.parser :as parser]
             [cot.schema :as schema]
             [ring.mock.request :as mock]
-            [ring.util.codec :refer [url-encode]]))
+            [ring.util.codec :refer [form-encode url-encode]]))
 
 (defn op-label [[method path]]
   (str (str/upper-case (name method)) " " path))
@@ -120,7 +120,8 @@
   (not= [] (parser/security-requirements (:doc (:spec ctx)) (:operation op))))
 
 (defn derive-request
-  "Request inputs `{:path-params :query :headers :body :media}` for `op`.
+  "Request inputs `{:path-params :query :query-style :headers :body :media}` for `op`
+   (`:query-style` from the ctx, see `query-styles`).
    `given` (same keys, plus `:multipart`, a map of parts) wins over derived values;
    a given `:body` or `:multipart` replaces the derived body. `:auth` headers are sent
    unless the operation is explicitly unsecured (`security: []`)."
@@ -149,6 +150,7 @@
                 (request-body ctx op))]
      {:path-params (merge (by-location values "path") (:path-params given))
       :query       (merge (by-location values "query") (:query given))
+      :query-style (:query-style given (:query-style ctx :openapi))
       :headers     (merge (by-location values "header")
                           (when (secured? ctx op) (:auth ctx))
                           (:headers given))
@@ -156,13 +158,75 @@
       :media       (:media body)})))
 
 ;; -----------------------------------------------------------------------------
-;; Building
+;; Query serialization
 
-(defn- ->query-value [v]
+(def query-styles
+  "`:openapi` (default) follows each parameter's `style` / `explode`; `:json` sends
+   array and object values as JSON text (`?ids=[\"a\",\"b\"]`), for APIs that parse
+   their query that way without declaring `content: application/json`."
+  #{:openapi :json})
+
+(defn- scalar-str [v]
   (cond
-    (string? v) v
-    (coll? v)   (json/write-str v)
-    :else       (str v)))
+    (string? v)  v
+    (keyword? v) (name v)
+    (coll? v)    (json/write-str v)
+    :else        (str v)))
+
+(defn- json-content? [param]
+  (some (comp schema/json-media? parser/kname) (keys (:content param))))
+
+(defn- serialize-param
+  "Pairs `[name value]` for query parameter `param` holding `v`. `param` may be nil
+   (a value given for a parameter the spec doesn't declare): `style: form`,
+   `explode: true` then, the OpenAPI default."
+  [query-style param pname v]
+  (let [style   (:style param "form")
+        explode (if (contains? param :explode) (:explode param) (= "form" style))
+        delim   (case style "spaceDelimited" " " "pipeDelimited" "|" ",")]
+    (cond
+      (not (coll? v))
+      [[pname (scalar-str v)]]
+
+      (or (= :json query-style) (json-content? param))
+      [[pname (json/write-str v)]]
+
+      (map? v)
+      (cond
+        (= "deepObject" style)
+        (for [[k x] v] [(str pname "[" (scalar-str k) "]") (scalar-str x)])
+
+        explode
+        (for [[k x] v] [(scalar-str k) (scalar-str x)])
+
+        :else
+        [[pname (str/join "," (mapcat (fn [[k x]] [(scalar-str k) (scalar-str x)]) v))]])
+
+      explode
+      (for [x v] [pname (scalar-str x)])
+
+      :else
+      [[pname (str/join delim (map scalar-str v))]])))
+
+(defn serialize-query
+  "Query string of `query` (param name -> value) for `op`, each value serialized per
+   its parameter's `style` / `explode` (`query-style` `:openapi`, the default) or as
+   JSON (`:json`, see `query-styles`). `content: application/json` parameters are
+   always sent as JSON."
+  ([op query] (serialize-query op query :openapi))
+  ([op query query-style]
+   (when-not (contains? query-styles (or query-style :openapi))
+     (throw (ex-info (str "unknown :query-style " (pr-str query-style))
+                     {:query-style query-style, :allowed query-styles})))
+   (let [defs  (into {} (for [p (:params op) :when (= "query" (:in p))] [(:name p) p]))
+         pairs (mapcat (fn [[k v]]
+                         (let [pname (scalar-str k)]
+                           (serialize-param query-style (get defs pname) pname v)))
+                       query)]
+     (str/join "&" (for [[k v] pairs] (str (form-encode k) "=" (form-encode v)))))))
+
+;; -----------------------------------------------------------------------------
+;; Building
 
 (defn- multipart-part
   "A part for ring-mock: a string, File, byte array, `{:file path-or-File}` or ring-mock's
@@ -201,15 +265,17 @@
     (-> (mock/body request body) (mock/content-type media))))
 
 (defn build-request
-  "Ring mock request for `op` (`:method`, `:path`) from inputs
-   `{:path-params :query :headers :body :media :multipart}`. `:multipart` is a map of
-   parts (see `multipart-part`), the same as `:body` with `:media
+  "Ring mock request for `op` (`:method`, `:path`, `:params`) from inputs
+   `{:path-params :query :query-style :headers :body :media :multipart}`. `:query` is
+   serialized by `serialize-query` (`:query-style`, default `:openapi`). `:multipart`
+   is a map of parts (see `multipart-part`), the same as `:body` with `:media
    \"multipart/form-data\"`."
-  [{:keys [method path]} {:keys [path-params query headers body media multipart]}]
+  [{:keys [method path] :as op}
+   {:keys [path-params query query-style headers body media multipart]}]
   (let [uri (reduce (fn [p [k v]] (str/replace p (str "{" (name k) "}") (url-encode (str v))))
                     path path-params)
         [body media] (if (some? multipart) [multipart "multipart/form-data"] [body media])]
     (cond-> (mock/request method uri)
-      (seq query) (mock/query-string (update-vals query ->query-value))
+      (seq query) (mock/query-string (serialize-query op query query-style))
       true        (#(reduce (fn [r [k v]] (mock/header r k v)) % headers))
       true        (with-body media body))))
