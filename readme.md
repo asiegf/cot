@@ -9,7 +9,7 @@ COT is a Clojure library that generates `clojure.test` checks and `clojure.spec`
 As a git dependency (versions are tagged `YYYY.MINOR.PATCH`, see `CHANGELOG.md`):
 
 ```clojure
-{:deps {io.github.asiegf/cot {:git/tag "2026.1.0" :git/sha "@SHA@"}}}
+{:deps {io.github.asiegf/cot {:git/tag "2026.1.0" :git/sha "1d87e91"}}}
 ```
 
 If you are developing locally:
